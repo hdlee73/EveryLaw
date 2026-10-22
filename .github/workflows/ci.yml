@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests + debug APK
+        # 비밀 값 없이 빌드된다(데모 모드). 실제 API 키·서명 키는 릴리스 워크플로에서만 주입.
+        run: ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: everylaw-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14

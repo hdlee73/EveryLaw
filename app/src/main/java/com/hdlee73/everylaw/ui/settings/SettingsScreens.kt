@@ -89,15 +89,16 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
                         Text("국가법령정보 API 인증(OC)", style = MaterialTheme.typography.titleMedium)
                     }
                     val overrideOpen = !vm.hasBuiltInKey || showOverride || settings.userOc.isNotEmpty()
-                    Text(
-                        if (vm.hasBuiltInKey) "기본 인증키가 앱에 들어 있어 따로 입력할 필요가 없어요. 내 OC로 조회하고 싶을 때만 바꾸세요."
-                        else "open.law.go.kr 에서 공동활용 신청 후 받은 OC(가입 이메일 ID)를 입력하세요. 기기에만 저장되며 비워 두면 데모 데이터로 동작해요.",
-                        style = MaterialTheme.typography.bodySmall,
+                    OcGuideText(hasBuiltInKey = vm.hasBuiltInKey, usingOwnKey = settings.userOc.isNotBlank())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!overrideOpen) TextButton(onClick = { showOverride = true }) { Text("내 OC로 바꾸기") }
+                        OpenOcGuideButton()
+                    }
+                    if (overrideOpen) Text(
+                        "입력한 OC는 이 기기에만 저장되고, 기본 키보다 우선해서 쓰여요.",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (!overrideOpen) {
-                        TextButton(onClick = { showOverride = true }) { Text("내 OC로 바꾸기") }
-                    }
                     if (overrideOpen) OutlinedTextField(
                         value = oc,
                         onValueChange = { oc = it },

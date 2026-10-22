@@ -24,6 +24,7 @@ class SettingsViewModel(
     val hasBuiltInKey: Boolean = BuiltInKey.oc.isNotBlank()
 
     fun saveOc(value: String) = viewModelScope.launch { store.setOc(value) }
+    fun markOcGuideSeen() = viewModelScope.launch { store.markOcGuideSeen() }
     fun setAutoUpdate(value: Boolean) = viewModelScope.launch { store.setAutoUpdate(value) }
 
     fun checkUpdate() = viewModelScope.launch {

@@ -63,6 +63,7 @@ import com.hdlee73.everylaw.ui.library.QueryListScreen
 import com.hdlee73.everylaw.ui.search.SearchScreen
 import com.hdlee73.everylaw.ui.search.SearchViewModel
 import com.hdlee73.everylaw.ui.settings.AboutScreen
+import com.hdlee73.everylaw.ui.settings.FirstRunOcGuide
 import com.hdlee73.everylaw.ui.settings.SettingsScreen
 import com.hdlee73.everylaw.ui.settings.SettingsViewModel
 import com.hdlee73.everylaw.ui.settings.UpdateDialog
@@ -136,6 +137,9 @@ private fun EverylawRoot(
         searchVm.submit(q)
         goTop(TopLevel.Home)
     }
+
+    // 첫 실행 한 번: 기본(공용) 인증키와 본인 OC 발급 안내
+    FirstRunOcGuide(settingsVm, onOpenSettings = { goTop(TopLevel.Settings) })
 
     Row(Modifier.fillMaxSize()) {
         if (isWide && current != null) {

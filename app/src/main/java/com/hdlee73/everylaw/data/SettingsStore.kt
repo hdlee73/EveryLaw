@@ -23,6 +23,10 @@ data class AppSettings(
     val lastUpdateCheck: Long = 0L,
     val recent: List<String> = emptyList(),
     val favorites: List<String> = emptyList(),
+    /** 첫 실행 OC 안내를 봤는지 */
+    val ocGuideSeen: Boolean = false,
+    /** DataStore에서 실제로 읽어 왔는지 (초기 기본값과 구분해 안내가 깜빡이지 않게) */
+    val loaded: Boolean = false,
 )
 
 /** 설정·최근 검색·즐겨찾기 저장소 (Jetpack DataStore). */
@@ -34,6 +38,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
         val lastCheck = longPreferencesKey("last_update_check")
         val recent = stringPreferencesKey("recent")
         val favorites = stringPreferencesKey("favorites")
+        val ocGuideSeen = booleanPreferencesKey("oc_guide_seen")
     }
 
     val settings: StateFlow<AppSettings> = context.dataStore.data.map { p ->
@@ -43,11 +48,14 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
             lastUpdateCheck = p[Keys.lastCheck] ?: 0L,
             recent = p[Keys.recent].toList(),
             favorites = p[Keys.favorites].toList(),
+            ocGuideSeen = p[Keys.ocGuideSeen] ?: false,
+            loaded = true,
         )
     }.stateIn(scope, SharingStarted.Eagerly, AppSettings())
 
     suspend fun setOc(value: String) = context.dataStore.edit { it[Keys.oc] = value.trim() }
     suspend fun setAutoUpdate(value: Boolean) = context.dataStore.edit { it[Keys.autoUpdate] = value }
+    suspend fun markOcGuideSeen() = context.dataStore.edit { it[Keys.ocGuideSeen] = true }
     suspend fun markUpdateChecked(at: Long) = context.dataStore.edit { it[Keys.lastCheck] = at }
 
     suspend fun addRecent(query: String) = context.dataStore.edit { p ->

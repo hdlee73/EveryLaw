@@ -2,7 +2,7 @@ package com.hdlee73.everylaw.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hdlee73.everylaw.BuildConfig
+import com.hdlee73.everylaw.di.BuiltInKey
 import com.hdlee73.everylaw.data.AppSettings
 import com.hdlee73.everylaw.data.SettingsStore
 import com.hdlee73.everylaw.update.ReleaseInfo
@@ -21,7 +21,7 @@ class SettingsViewModel(
     val currentVersion: String get() = updates.currentVersion
 
     /** 빌드에 키가 주입되었는지 (값 자체는 노출하지 않음) */
-    val hasBuiltInKey: Boolean = BuildConfig.LAW_OC.isNotBlank()
+    val hasBuiltInKey: Boolean = BuiltInKey.oc.isNotBlank()
 
     fun saveOc(value: String) = viewModelScope.launch { store.setOc(value) }
     fun setAutoUpdate(value: Boolean) = viewModelScope.launch { store.setAutoUpdate(value) }

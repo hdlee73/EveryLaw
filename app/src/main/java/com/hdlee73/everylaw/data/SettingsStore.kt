@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.stateIn
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 data class AppSettings(
-    /** 사용자가 직접 입력한 국가법령정보 OC. 비어 있으면 빌드에 주입된 값(BuildConfig.LAW_OC)을 쓴다. */
+    /** 사용자가 직접 입력한 국가법령정보 OC. 비어 있으면 빌드에 주입된 값(BuiltInKey)을 쓴다. */
     val userOc: String = "",
     val autoUpdate: Boolean = true,
     val lastUpdateCheck: Long = 0L,

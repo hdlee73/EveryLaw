@@ -73,6 +73,8 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
     val update by vm.updateState.collectAsStateWithLifecycle()
     var oc by rememberSaveable(settings.userOc) { mutableStateOf(settings.userOc) }
     var reveal by rememberSaveable { mutableStateOf(false) }
+    // 기본 키가 내장된 빌드에서는 입력란을 접어 두고, 원할 때만 내 OC로 덮어쓴다
+    var showOverride by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(topBar = { LargeTopAppBar(title = { Text("설정") }) }) { pad ->
         Column(
@@ -86,13 +88,17 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
                         Spacer(Modifier.width(10.dp))
                         Text("국가법령정보 API 인증(OC)", style = MaterialTheme.typography.titleMedium)
                     }
+                    val overrideOpen = !vm.hasBuiltInKey || showOverride || settings.userOc.isNotEmpty()
                     Text(
-                        "open.law.go.kr 에서 공동활용 신청 후 받은 OC(가입 이메일 ID)를 입력하세요. 기기에만 저장되며 비워 두면 " +
-                            if (vm.hasBuiltInKey) "앱에 포함된 공식 키를 사용해요." else "데모 데이터로 동작해요.",
+                        if (vm.hasBuiltInKey) "기본 인증키가 앱에 들어 있어 따로 입력할 필요가 없어요. 내 OC로 조회하고 싶을 때만 바꾸세요."
+                        else "open.law.go.kr 에서 공동활용 신청 후 받은 OC(가입 이메일 ID)를 입력하세요. 기기에만 저장되며 비워 두면 데모 데이터로 동작해요.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    OutlinedTextField(
+                    if (!overrideOpen) {
+                        TextButton(onClick = { showOverride = true }) { Text("내 OC로 바꾸기") }
+                    }
+                    if (overrideOpen) OutlinedTextField(
                         value = oc,
                         onValueChange = { oc = it },
                         label = { Text("OC") },
@@ -106,13 +112,17 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
                             }
                         },
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (overrideOpen) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { vm.saveOc(oc) }, enabled = oc != settings.userOc) { Text("저장") }
-                        if (settings.userOc.isNotEmpty()) OutlinedButton(onClick = { oc = ""; vm.saveOc("") }) { Text("지우기") }
+                        if (settings.userOc.isNotEmpty()) {
+                            OutlinedButton(onClick = { oc = ""; vm.saveOc(""); showOverride = false }) {
+                                Text(if (vm.hasBuiltInKey) "기본 키로 되돌리기" else "지우기")
+                            }
+                        }
                     }
                     val mode = when {
                         settings.userOc.isNotBlank() -> "직접 입력한 키로 실제 API 조회 중"
-                        vm.hasBuiltInKey -> "앱에 포함된 키로 실제 API 조회 중"
+                        vm.hasBuiltInKey -> "기본 내장 키로 실제 API 조회 중"
                         else -> "데모 모드"
                     }
                     Text("현재 상태: $mode", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)

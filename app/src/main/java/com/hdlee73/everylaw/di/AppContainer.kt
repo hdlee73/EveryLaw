@@ -1,7 +1,6 @@
 package com.hdlee73.everylaw.di
 
 import android.content.Context
-import com.hdlee73.everylaw.BuildConfig
 import com.hdlee73.everylaw.core.data.remote.LawApiService
 import com.hdlee73.everylaw.core.data.repository.RemoteLawRepository
 import com.hdlee73.everylaw.core.data.repository.SwitchingLawRepository
@@ -24,7 +23,7 @@ class AppContainer(context: Context) {
     val settings = SettingsStore(context.applicationContext, appScope)
 
     /** 사용자가 입력한 키 > 빌드 시 주입한 키 */
-    private fun currentOc(): String = settings.settings.value.userOc.ifBlank { BuildConfig.LAW_OC }
+    private fun currentOc(): String = settings.settings.value.userOc.ifBlank { BuiltInKey.oc }
 
     // 요청 URL에 OC가 붙으므로 HTTP 로깅 인터셉터는 달지 않는다.
     private val api = LawApiService.create(ocProvider = ::currentOc)

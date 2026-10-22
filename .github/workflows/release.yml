@@ -26,7 +26,12 @@ jobs:
       - name: Prepare signing key and version
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          LAW_OC: ${{ secrets.LAW_OC }}
         run: |
+          if [ -z "$LAW_OC" ]; then
+            echo "::error::LAW_OC secret이 없습니다. 기본 인증키 없이 배포하면 앱이 데모 모드로 열립니다."
+            exit 1
+          fi
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "::error::KEYSTORE_BASE64 secret이 없습니다. README의 '릴리스 서명' 절을 참고하세요."
             exit 1

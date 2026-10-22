@@ -14,6 +14,13 @@ val localProps = Properties().apply {
 fun secret(envName: String, propName: String): String? =
     System.getenv(envName)?.takeIf { it.isNotBlank() } ?: localProps.getProperty(propName)?.takeIf { it.isNotBlank() }
 
+// 내장 OC는 APK 문자열 검색으로 바로 보이지 않게 XOR+Base64로 감싼다. 보안 수단이 아니라 단순 가림이다(README 참고).
+fun obfuscate(value: String): String {
+    val salt = "everylaw-oc".toByteArray()
+    val bytes = value.toByteArray(Charsets.UTF_8).mapIndexed { i, b -> (b.toInt() xor salt[i % salt.size].toInt()).toByte() }
+    return java.util.Base64.getEncoder().encodeToString(bytes.toByteArray())
+}
+
 val appVersionName = System.getenv("VERSION_NAME")?.removePrefix("v") ?: "1.0.0"
 val appVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
 
@@ -28,8 +35,9 @@ android {
         versionCode = appVersionCode
         versionName = appVersionName
 
-        // 국가법령정보 공동활용 OC. 비어 있으면 앱은 데모 모드로 동작하고, 설정 화면에서 직접 입력할 수 있다.
-        buildConfigField("String", "LAW_OC", "\"${secret("LAW_OC", "law.oc") ?: ""}\"")
+        // 국가법령정보 공동활용 OC 기본값. 릴리스는 GitHub Secret LAW_OC로 주입되어 사용자가 따로 입력할 필요가 없다.
+        // 비어 있으면(포크·로컬 빌드) 데모 모드로 동작하고, 설정에서 자기 OC로 덮어쓸 수 있다.
+        buildConfigField("String", "LAW_OC_ENC", "\"${obfuscate(secret("LAW_OC", "law.oc") ?: "")}\"")
         buildConfigField("String", "UPDATE_REPO", "\"hdlee73/Everylaw\"")
         buildConfigField("String", "AUTHOR_NAME", "\"이현덕\"")
         buildConfigField("String", "AUTHOR_EMAIL", "\"hdlee73@gmail.com\"")

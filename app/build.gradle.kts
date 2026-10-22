@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -18,7 +19,7 @@ fun secret(envName: String, propName: String): String? =
 fun obfuscate(value: String): String {
     val salt = "everylaw-oc".toByteArray()
     val bytes = value.toByteArray(Charsets.UTF_8).mapIndexed { i, b -> (b.toInt() xor salt[i % salt.size].toInt()).toByte() }
-    return java.util.Base64.getEncoder().encodeToString(bytes.toByteArray())
+    return Base64.getEncoder().encodeToString(bytes.toByteArray())
 }
 
 val appVersionName = System.getenv("VERSION_NAME")?.removePrefix("v") ?: "1.0.0"

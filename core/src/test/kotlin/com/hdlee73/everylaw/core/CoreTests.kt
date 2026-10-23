@@ -67,6 +67,15 @@ class DrfParsersTest {
         assertEquals("자본시장법", r.abbreviation)
     }
 
+    @Test fun parsesKoreanTagsIncludingKeyword() {
+        val xml = """<LawSearch><totalCnt>1</totalCnt><키워드>a&amp;b</키워드><키워드목록 구분="1">x</키워드목록><law><법령명한글>가나다</법령명한글></law></LawSearch>"""
+        val root = com.hdlee73.everylaw.core.parser.XmlNode.parse(xml)
+        assertEquals("a&b", root.firstText("키워드"))
+        assertEquals("x", root.firstText("키워드목록"))
+        assertEquals("1", root.first("키워드목록")!!.attributes["구분"])
+        assertEquals("가나다", DrfParsers.parseLawSearch(xml).single().name)
+    }
+
     @Test fun emptyListWithTotalCntIsNotAnError() {
         val xml = "<LawSearch><target>law</target><totalCnt>0</totalCnt></LawSearch>"
         assertTrue(DrfParsers.parseLawSearch(xml).isEmpty())

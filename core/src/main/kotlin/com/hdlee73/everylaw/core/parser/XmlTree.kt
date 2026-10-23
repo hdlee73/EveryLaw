@@ -1,17 +1,17 @@
 package com.hdlee73.everylaw.core.parser
 
-import org.w3c.dom.Element
-import org.w3c.dom.Node
-import java.io.StringReader
-import javax.xml.parsers.DocumentBuilderFactory
+import org.xml.sax.Attributes
 import org.xml.sax.InputSource
+import org.xml.sax.helpers.DefaultHandler
+import java.io.StringReader
+import javax.xml.parsers.SAXParserFactory
 
 /**
  * 국가법령정보 DRF 응답 XML을 다루기 위한 가벼운 트리.
  *
  * DRF 응답은 한글 태그명(<조문내용>, <행정규칙명> 등)을 쓰고, 대상(target)마다 래퍼 구조가 조금씩 다르다.
  * 고정 스키마 대신 "이름이 X인/X를 포함하는 하위 요소"로 찾도록 해서 구조 변화에 덜 민감하게 만든다.
- * javax DOM 파서는 JVM과 안드로이드 모두에 있어 :core 모듈을 순수 Kotlin으로 유지할 수 있다.
+ * javax SAX 파서는 JVM과 안드로이드 모두에 있어 :core 모듈을 순수 Kotlin으로 유지할 수 있다.
  */
 class XmlNode(
     val name: String,
@@ -55,34 +55,45 @@ class XmlNode(
     }
 
     companion object {
+        /**
+         * SAX로 읽어 트리를 만든다. 안드로이드의 DOM 빌더는 태그 이름 검증이 엄격해서
+         * 한글 태그(<키워드> 등)에서 DOMException을 던지므로 DOM 대신 SAX를 쓴다.
+         */
         fun parse(xml: String): XmlNode {
-            val factory = DocumentBuilderFactory.newInstance().apply {
+            val factory = SAXParserFactory.newInstance().apply {
                 isNamespaceAware = false
-                isExpandEntityReferences = false
                 runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
                 runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
                 runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
             }
-            val doc = factory.newDocumentBuilder().parse(InputSource(StringReader(xml.trimStart('﻿'))))
-            return convert(doc.documentElement)
+            val handler = TreeHandler()
+            factory.newSAXParser().parse(InputSource(StringReader(xml.trimStart('\uFEFF'))), handler)
+            return handler.result ?: throw org.xml.sax.SAXException("빈 XML 문서")
         }
 
-        private fun convert(el: Element): XmlNode {
-            val kids = mutableListOf<XmlNode>()
+        private class Frame(val name: String, val attrs: Map<String, String>) {
             val text = StringBuilder()
-            val nodes = el.childNodes
-            for (i in 0 until nodes.length) {
-                val n = nodes.item(i)
-                when (n.nodeType) {
-                    Node.ELEMENT_NODE -> kids += convert(n as Element)
-                    Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> text.append(n.nodeValue)
-                }
+            val kids = mutableListOf<XmlNode>()
+        }
+
+        private class TreeHandler : DefaultHandler() {
+            private val stack = ArrayDeque<Frame>()
+            var result: XmlNode? = null
+
+            override fun startElement(uri: String?, localName: String?, qName: String, a: Attributes) {
+                val attrs = buildMap { for (i in 0 until a.length) put(a.getQName(i), a.getValue(i)) }
+                stack.addLast(Frame(qName, attrs))
             }
-            val attrs = buildMap {
-                val a = el.attributes
-                for (i in 0 until a.length) put(a.item(i).nodeName, a.item(i).nodeValue)
+
+            override fun characters(ch: CharArray, start: Int, length: Int) {
+                stack.lastOrNull()?.text?.append(ch, start, length)
             }
-            return XmlNode(el.tagName, text.toString().trim(), attrs, kids)
+
+            override fun endElement(uri: String?, localName: String?, qName: String) {
+                val f = stack.removeLast()
+                val node = XmlNode(f.name, f.text.toString().trim(), f.attrs, f.kids)
+                if (stack.isEmpty()) result = node else stack.last().kids += node
+            }
         }
     }
 }

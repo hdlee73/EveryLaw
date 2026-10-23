@@ -212,7 +212,7 @@ private fun EverylawRoot(
             // 바깥 Scaffold가 이미 시스템 바 여백을 줬으니 안쪽 화면의 Scaffold가 중복 적용하지 않도록 소비 처리
             Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
                 com.hdlee73.everylaw.ui.ProvideCitationHandler(onCite = runQuery) {
-                    EverylawNavHost(nav, split, factory, searchVm, settingsVm, runQuery)
+                    EverylawNavHost(nav, split, appSettings, factory, searchVm, settingsVm, runQuery)
                 }
             }
         }
@@ -223,6 +223,7 @@ private fun EverylawRoot(
 private fun EverylawNavHost(
     nav: NavHostController,
     split: Boolean,
+    appSettings: com.hdlee73.everylaw.data.AppSettings,
     factory: androidx.lifecycle.ViewModelProvider.Factory,
     searchVm: SearchViewModel,
     settingsVm: SettingsViewModel,
@@ -233,6 +234,8 @@ private fun EverylawNavHost(
             SearchScreen(
                 vm = searchVm,
                 isWide = split,
+                splitMode = appSettings.splitMode,
+                onSplitMode = settingsVm::setSplitMode,
                 onOpenPrecedent = { nav.navigate("precedent/${Uri.encode(it.serialNo)}") },
                 onOpenLaw = { law ->
                     nav.navigate(

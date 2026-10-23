@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.UnfoldLess
+import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AssistChip
@@ -82,6 +85,8 @@ import kotlinx.coroutines.launch
 fun SearchScreen(
     vm: SearchViewModel,
     isWide: Boolean,
+    splitMode: com.hdlee73.everylaw.data.SplitMode,
+    onSplitMode: (com.hdlee73.everylaw.data.SplitMode) -> Unit,
     onOpenPrecedent: (PrecedentSummary) -> Unit,
     onOpenLaw: (LawSummary) -> Unit,
     onOpenAdminRule: (AdminRuleSummary) -> Unit,
@@ -117,9 +122,18 @@ fun SearchScreen(
                         isFavorite = s.tree.query.raw in favorites,
                         isWide = isWide,
                         onToggleFavorite = { vm.toggleFavorite(s.tree.query.raw) },
-                        onExpandAll = vm::expandAll,
                         onVersions = vm::openVersions,
                         onOpenSettings = onOpenSettings,
+                    )
+                },
+                actions = {
+                    TreeActions(
+                        tree = s.tree,
+                        isWide = isWide,
+                        splitMode = splitMode,
+                        onSplitMode = onSplitMode,
+                        onExpandAll = vm::expandAll,
+                        onVersions = vm::openVersions,
                         buildExtras = vm::pdfExtras,
                     )
                 },
@@ -192,9 +206,62 @@ private fun TreeHeader(
     isFavorite: Boolean,
     isWide: Boolean,
     onToggleFavorite: () -> Unit,
-    onExpandAll: (Boolean) -> Unit,
     onVersions: () -> Unit,
     onOpenSettings: () -> Unit,
+) {
+    Column(
+        Modifier.padding(horizontal = if (isWide) 0.dp else 14.dp).padding(bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().background(com.hdlee73.everylaw.ui.theme.Navy, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(start = 18.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(tree.law.name, style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.75f))
+                Text(
+                    "${tree.query.target} 위임 구조",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = androidx.compose.ui.graphics.Color.White,
+                )
+            }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                    contentDescription = if (isFavorite) "즐겨찾기 해제" else "즐겨찾기 추가",
+                    tint = com.hdlee73.everylaw.ui.theme.Gold,
+                )
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SuggestionChip(onClick = {}, label = { Text("하위 규정 ${tree.root.descendantCount}개") })
+            tree.version?.let { v -> SuggestionChip(onClick = onVersions, label = { Text("${v.effectiveDateLabel} 시행 기준") }) }
+        }
+        if (tree.isSample) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Info, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text("데모 데이터입니다. 설정에서 국가법령정보 OC를 입력하면 실제 법령을 조회해요.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onOpenSettings) { Text("설정") }
+                }
+            }
+        }
+        tree.warnings.forEach {
+            Text("※ $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** 스크롤해도 화면 위에 붙어 있는 작업 줄: 전체 펼치기/접기, 시행 연혁, PDF 저장, 공유 */
+@Composable
+private fun TreeActions(
+    tree: DelegationTree,
+    isWide: Boolean,
+    splitMode: com.hdlee73.everylaw.data.SplitMode,
+    onSplitMode: (com.hdlee73.everylaw.data.SplitMode) -> Unit,
+    onExpandAll: (Boolean) -> Unit,
+    onVersions: () -> Unit,
     buildExtras: suspend (PdfOptions) -> com.hdlee73.everylaw.core.model.PdfExtras,
 ) {
     val context = LocalContext.current
@@ -229,62 +296,32 @@ private fun TreeHeader(
         )
     }
 
-    Column(
-        Modifier.padding(horizontal = if (isWide) 0.dp else 14.dp).padding(bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().background(com.hdlee73.everylaw.ui.theme.Navy, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(start = 18.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(tree.law.name, style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.75f))
-                Text(
-                    "${tree.query.target} 위임 구조",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = androidx.compose.ui.graphics.Color.White,
-                )
-            }
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                    contentDescription = if (isFavorite) "즐겨찾기 해제" else "즐겨찾기 추가",
-                    tint = com.hdlee73.everylaw.ui.theme.Gold,
-                )
-            }
+        // 분할 화면 방식을 설정에 가지 않고 바로 바꾼다 (자동 → 항상 분할 → 분할 안 함 → 자동 …)
+        val modes = com.hdlee73.everylaw.data.SplitMode.entries
+        AssistChip(
+            onClick = { onSplitMode(modes[(splitMode.ordinal + 1) % modes.size]) },
+            label = { Text("화면: ${splitMode.label}") },
+            leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
+        )
+        if (!isWide) {
+            AssistChip(onClick = { onExpandAll(true) }, label = { Text("전체 펼치기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldMore, null) })
+            AssistChip(onClick = { onExpandAll(false) }, label = { Text("접기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldLess, null) })
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SuggestionChip(onClick = {}, label = { Text("하위 규정 ${tree.root.descendantCount}개") })
-            tree.version?.let { v -> SuggestionChip(onClick = onVersions, label = { Text("${v.effectiveDateLabel} 시행 기준") }) }
-            if (!isWide) {
-                AssistChip(onClick = { onExpandAll(true) }, label = { Text("전체 펼치기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldMore, null) })
-                AssistChip(onClick = { onExpandAll(false) }, label = { Text("접기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldLess, null) })
-            }
-            AssistChip(onClick = onVersions, label = { Text("시행 연혁") }, leadingIcon = { Icon(Icons.Outlined.History, null) })
-            AssistChip(
-                onClick = { chooseFor = false },
-                label = { Text("PDF 저장") },
-                leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
-            )
-            AssistChip(
-                onClick = { chooseFor = true },
-                label = { Text("공유") },
-                leadingIcon = { Icon(Icons.Outlined.Share, null) },
-            )
-        }
-        if (tree.isSample) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Info, contentDescription = null)
-                    Spacer(Modifier.width(10.dp))
-                    Text("데모 데이터입니다. 설정에서 국가법령정보 OC를 입력하면 실제 법령을 조회해요.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = onOpenSettings) { Text("설정") }
-                }
-            }
-        }
-        tree.warnings.forEach {
-            Text("※ $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        AssistChip(onClick = onVersions, label = { Text("시행 연혁") }, leadingIcon = { Icon(Icons.Outlined.History, null) })
+        AssistChip(
+            onClick = { chooseFor = false },
+            label = { Text("PDF 저장") },
+            leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
+        )
+        AssistChip(
+            onClick = { chooseFor = true },
+            label = { Text("공유") },
+            leadingIcon = { Icon(Icons.Outlined.Share, null) },
+        )
     }
 }
 

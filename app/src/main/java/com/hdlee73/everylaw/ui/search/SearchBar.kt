@@ -18,6 +18,8 @@ import com.hdlee73.everylaw.ui.theme.Navy
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,9 +120,9 @@ fun LawSearchBar(
             onValueChange = onQueryChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .heightIn(min = 60.dp)
                 .focusRequester(focusRequester),
-            placeholder = { Text("예) 자본시장법 제12조 제2항", maxLines = 1) },
+            placeholder = { Text("예) 자본시장법 제12조 제2항", maxLines = 1, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp)) },
             leadingIcon = { Icon(EverylawIcons.Search, contentDescription = null) },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -138,6 +140,10 @@ fun LawSearchBar(
                 }
             },
             singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                lineHeight = 26.sp,
+                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+            ),
             shape = RoundedCornerShape(12.dp),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.White,

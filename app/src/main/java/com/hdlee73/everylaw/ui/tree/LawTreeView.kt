@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.lazy.stickyHeader
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -85,13 +87,14 @@ fun LawTreeView(
     state: SearchUiState.TreeSuccess,
     isWide: Boolean,
     header: @Composable ColumnScope.() -> Unit,
+    actions: @Composable () -> Unit,
     onToggle: (String) -> Unit,
     onSelect: (String) -> Unit,
     onOpenPrecedent: (PrecedentSummary) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (isWide) SplitTreeView(state, header, onToggle, onSelect, onOpenPrecedent, modifier)
-    else AccordionTreeView(state, header, onToggle, onOpenPrecedent, modifier)
+    if (isWide) SplitTreeView(state, header, actions, onToggle, onSelect, onOpenPrecedent, modifier)
+    else AccordionTreeView(state, header, actions, onToggle, onOpenPrecedent, modifier)
 }
 
 // ------------------------------------------------------------------ 아코디언 (폰)
@@ -108,10 +111,12 @@ private fun visibleNodes(root: LawNode, expanded: Set<String>): List<VisibleNode
     return out
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AccordionTreeView(
     state: SearchUiState.TreeSuccess,
     header: @Composable ColumnScope.() -> Unit,
+    actions: @Composable () -> Unit,
     onToggle: (String) -> Unit,
     onOpenPrecedent: (PrecedentSummary) -> Unit,
     modifier: Modifier,
@@ -123,6 +128,7 @@ private fun AccordionTreeView(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "header") { Column { header() } }
+        stickyHeader(key = "actions") { actions() }
         item(key = "article") {
             ArticleCard {
                 ArticleBody(root, state.expanded, onToggle) { nodes ->
@@ -145,6 +151,17 @@ private fun ArticleCard(content: @Composable () -> Unit) {
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
     }
+}
+
+/** 찾는 대상이 특정 항·호여도 항상 조 제목("제112조(의결권 등)")을 맨 앞에 보여 준다. */
+@Composable
+private fun ArticleTitle(article: com.hdlee73.everylaw.core.model.Article) {
+    val title = article.parsed.header.ifBlank {
+        val t = article.title.trim()
+        val shown = if (t.isEmpty() || t.startsWith("(")) t else "($t)"
+        (article.number?.display.orEmpty() + shown)
+    }
+    if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
 }
 
 private fun groupId(path: ItemPath) = "grp:" + path.key
@@ -188,6 +205,7 @@ private fun ArticleBody(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ArticleTitle(root.article)
         if (parsed.lead.isNotBlank()) CitationText(parsed.lead, ctx, style = LawBodyStyle, selectable = true)
         if (parsed.items.isEmpty() && parsed.lead.isBlank()) CitationText(root.article.content, ctx, style = LawBodyStyle, selectable = true)
         parsed.items.forEach { Item(it, 0) }
@@ -292,10 +310,12 @@ private fun StepNode(root: LawNode, node: LawNode, isLast: Boolean, expanded: Se
 
 // ------------------------------------------------------------------ 분할 (폴더블)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SplitTreeView(
     state: SearchUiState.TreeSuccess,
     header: @Composable ColumnScope.() -> Unit,
+    actions: @Composable () -> Unit,
     onToggle: (String) -> Unit,
     onSelect: (String) -> Unit,
     onOpenPrecedent: (PrecedentSummary) -> Unit,
@@ -309,6 +329,8 @@ private fun SplitTreeView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "header") { Column { header() } }
+            stickyHeader(key = "actions") { actions() }
+        stickyHeader(key = "actions") { actions() }
             item(key = "article") {
                 val root = state.tree.root
                 ArticleCard {

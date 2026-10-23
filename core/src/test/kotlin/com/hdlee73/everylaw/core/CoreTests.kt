@@ -67,6 +67,18 @@ class DrfParsersTest {
         assertEquals("자본시장법", r.abbreviation)
     }
 
+    @Test fun emptyListWithTotalCntIsNotAnError() {
+        val xml = "<LawSearch><target>law</target><totalCnt>0</totalCnt></LawSearch>"
+        assertTrue(DrfParsers.parseLawSearch(xml).isEmpty())
+    }
+
+    @Test fun unexpectedEmptyResponseReportsRootAndSnippet() {
+        val xml = "<error><msg>사용자 정보 검증에 실패하였습니다.</msg></error>"
+        val e = runCatching { DrfParsers.parseLawSearch(xml) }.exceptionOrNull()
+        assertTrue(e is com.hdlee73.everylaw.core.parser.DrfFormatException)
+        assertTrue(e!!.message!!.contains("<error>") && e.message!!.contains("검증에 실패"))
+    }
+
     @Test fun parsesThreeTierRows() {
         val xml = """<ThdCmpLawXService><기본정보><법령명>테스트법</법령명><시행령명>테스트법 시행령</시행령명></기본정보>
             <위임조문삼단비교>

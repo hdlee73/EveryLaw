@@ -29,10 +29,21 @@ object DrfParsers {
         return XmlNode.parse(trimmed)
     }
 
+    /**
+     * 목록 응답이 비어 있는데 정상 목록 응답의 표지(totalCnt)도 없다면 오류 응답으로 보고
+     * 루트 태그와 본문 일부를 오류 메시지에 담는다. (OC 오류·잘못된 요청 등을 화면에서 바로 알 수 있게)
+     */
+    private fun <T> List<T>.orDiagnose(root: XmlNode, xml: String): List<T> {
+        if (isNotEmpty() || root.first("totalCnt") != null) return this
+        val snippet = xml.replace(Regex("\\s+"), " ").take(240)
+        throw DrfFormatException("예상과 다른 응답 <${root.name}> — $snippet")
+    }
+
     // ---------- 법령 목록 (target=law) ----------
 
-    fun parseLawSearch(xml: String): List<LawSummary> =
-        root(xml).findAll("law").mapNotNull { n ->
+    fun parseLawSearch(xml: String): List<LawSummary> {
+        val r = root(xml)
+        return r.findAll("law").mapNotNull { n ->
             val name = n.childText("법령명한글", "법령명") ?: return@mapNotNull null
             LawSummary(
                 id = n.childText("법령ID").orEmpty(),
@@ -42,7 +53,8 @@ object DrfParsers {
                 kind = n.childText("법령구분명"),
                 effectiveDate = n.childText("시행일자"),
             )
-        }
+        }.orDiagnose(r, xml)
+    }
 
     // ---------- 시행일 법령 목록 (target=eflaw) ----------
 
@@ -150,8 +162,9 @@ object DrfParsers {
 
     // ---------- 행정규칙 (target=admrul) ----------
 
-    fun parseAdminRuleSearch(xml: String): List<AdminRuleSummary> =
-        root(xml).findAll("admrul").mapNotNull { n ->
+    fun parseAdminRuleSearch(xml: String): List<AdminRuleSummary> {
+        val r = root(xml)
+        return r.findAll("admrul").mapNotNull { n ->
             val name = n.childText("행정규칙명") ?: return@mapNotNull null
             AdminRuleSummary(
                 serialNo = n.childText("행정규칙일련번호", "행정규칙ID").orEmpty(),
@@ -159,7 +172,8 @@ object DrfParsers {
                 kind = n.childText("행정규칙종류"),
                 agency = n.childText("소관부처명", "발령기관명"),
             )
-        }
+        }.orDiagnose(r, xml)
+    }
 
     fun parseAdminRule(xml: String): AdminRuleDocument {
         val r = root(xml)
@@ -192,8 +206,9 @@ object DrfParsers {
 
     // ---------- 판례 (target=prec) ----------
 
-    fun parsePrecedentSearch(xml: String): List<PrecedentSummary> =
-        root(xml).findAll("prec").mapNotNull { n ->
+    fun parsePrecedentSearch(xml: String): List<PrecedentSummary> {
+        val r = root(xml)
+        return r.findAll("prec").mapNotNull { n ->
             val name = n.childText("사건명") ?: return@mapNotNull null
             PrecedentSummary(
                 serialNo = n.childText("판례일련번호").orEmpty(),
@@ -203,7 +218,8 @@ object DrfParsers {
                 court = n.childText("법원명"),
                 caseType = n.childText("사건종류명"),
             )
-        }
+        }.orDiagnose(r, xml)
+    }
 
     fun parsePrecedent(xml: String): PrecedentDetail {
         val r = root(xml)

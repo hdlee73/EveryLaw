@@ -170,6 +170,8 @@ data class KeywordSearchResult(
     val adminRules: List<AdminRuleSummary>,
     val precedents: List<PrecedentSummary>,
     val isSample: Boolean = false,
+    /** 일부 출처가 실패했을 때의 구체적인 원인 (예: "법령: DrfFormatException: …") */
+    val warnings: List<String> = emptyList(),
 )
 
 /**

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -150,7 +151,7 @@ fun SearchScreen(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                         ) {
                             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text(s.message, color = MaterialTheme.colorScheme.onErrorContainer)
+                                SelectionContainer { Text(s.message, color = MaterialTheme.colorScheme.onErrorContainer) }
                                 if (s.canRetry) Button(onClick = vm::retry) { Text("다시 시도") }
                             }
                         }
@@ -305,6 +306,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.keywordResults(
     onAdminRule: (AdminRuleSummary) -> Unit,
     onPrecedent: (PrecedentSummary) -> Unit,
 ) {
+    if (result.warnings.isNotEmpty()) item {
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        ) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                result.warnings.forEach {
+                    SelectionContainer { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer) }
+                }
+            }
+        }
+    }
     item { SectionTitle("법령", result.laws.size, Icons.AutoMirrored.Outlined.MenuBook) }
     items(result.laws, key = { "law-${it.mst}-${it.name}" }) { law ->
         ResultCard(

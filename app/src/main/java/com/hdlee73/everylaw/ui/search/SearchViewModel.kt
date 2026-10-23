@@ -234,9 +234,10 @@ class SearchViewModel(
     }
 
     private fun errorOf(e: Throwable): SearchUiState.Error = when (e) {
-        is LawDomainException -> SearchUiState.Error(e.message ?: "검색 결과가 없습니다.", canRetry = e is LawDomainException.NotFound)
+        is LawDomainException -> SearchUiState.Error(e.message ?: "검색 결과가 없습니다.", canRetry = e !is LawDomainException.InvalidQuery)
         is DrfFormatException -> SearchUiState.Error("국가법령정보 API 응답 오류: ${e.message}", canRetry = true)
-        is IOException -> SearchUiState.Error("네트워크 연결을 확인해 주세요. (${e.message})", canRetry = true)
-        else -> SearchUiState.Error(e.message ?: "알 수 없는 오류", canRetry = true)
+        is retrofit2.HttpException -> SearchUiState.Error("국가법령정보 서버 응답 오류: HTTP ${e.code()} ${e.message()}", canRetry = true)
+        is IOException -> SearchUiState.Error("네트워크 연결을 확인해 주세요. (${e::class.simpleName}: ${e.message})", canRetry = true)
+        else -> SearchUiState.Error("${e::class.simpleName}: ${e.message?.takeIf { it.isNotBlank() } ?: "(메시지 없음)"}", canRetry = true)
     }
 }

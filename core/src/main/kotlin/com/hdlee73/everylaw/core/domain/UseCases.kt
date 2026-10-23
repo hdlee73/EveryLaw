@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.flow
 sealed class LawDomainException(message: String) : Exception(message) {
     class InvalidQuery(message: String) : LawDomainException(message)
     class NotFound(message: String) : LawDomainException(message)
+    /** 외부 API 호출·응답 처리 실패. 출처별 원인을 그대로 담는다. */
+    class ApiFailure(message: String) : LawDomainException(message)
 }
 
 /** 트리 조회 진행 상황. UI가 단계별 로딩 문구를 보여줄 수 있게 Flow로 흘려보낸다. */
@@ -167,17 +169,26 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
             val laws = async { runCatching { repository.searchLaws(k) } }
             val rules = async { runCatching { repository.searchAdminRules(k) } }
             val precs = async { runCatching { repository.searchPrecedents(k) } }
-            val results = listOf(laws.await(), rules.await(), precs.await())
-            if (results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
+            val lawsR = laws.await()
+            val rulesR = rules.await()
+            val precsR = precs.await()
+            val failures = listOf("법령" to lawsR, "행정규칙" to rulesR, "판례" to precsR).mapNotNull { (label, r) ->
+                r.exceptionOrNull()?.let { "$label 검색 실패 · ${describe(it)}" }
+            }
+            if (failures.size == 3) throw LawDomainException.ApiFailure(failures.joinToString("\n"))
             KeywordSearchResult(
                 keyword = k,
-                laws = laws.await().getOrDefault(emptyList()),
-                adminRules = rules.await().getOrDefault(emptyList()),
-                precedents = precs.await().getOrDefault(emptyList()),
+                laws = lawsR.getOrDefault(emptyList()),
+                adminRules = rulesR.getOrDefault(emptyList()),
+                precedents = precsR.getOrDefault(emptyList()),
                 isSample = repository.isSample,
+                warnings = failures,
             )
         }
     }
+
+    private fun describe(e: Throwable): String =
+        "${e::class.simpleName}: ${e.message?.takeIf { it.isNotBlank() } ?: "(메시지 없음)"}"
 }
 
 class GetLawVersionsUseCase(private val repository: LawRepository) {

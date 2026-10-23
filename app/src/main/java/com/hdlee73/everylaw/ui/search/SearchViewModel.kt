@@ -57,6 +57,7 @@ class SearchViewModel(
     private val getDelegationTree: GetDelegationTreeUseCase,
     private val searchKeyword: SearchKeywordUseCase,
     private val getLawVersions: GetLawVersionsUseCase,
+    private val buildPdfExtras: com.hdlee73.everylaw.core.domain.BuildPdfExtrasUseCase,
     private val settings: SettingsStore,
 ) : ViewModel() {
 
@@ -188,6 +189,12 @@ class SearchViewModel(
                 VersionSheetState.Failed(errorOf(e).message)
             }
         }
+    }
+
+    /** PDF 범위에 맞춰 판례 본문·인용 조문을 내려받는다. */
+    suspend fun pdfExtras(options: com.hdlee73.everylaw.ui.tree.PdfOptions): com.hdlee73.everylaw.core.model.PdfExtras {
+        val tree = (_state.value as? SearchUiState.TreeSuccess)?.tree ?: return com.hdlee73.everylaw.core.model.PdfExtras()
+        return buildPdfExtras(tree, options.precedentBodies, options.relatedArticles)
     }
 
     fun closeVersions() {

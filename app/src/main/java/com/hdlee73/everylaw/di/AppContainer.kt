@@ -36,6 +36,7 @@ class AppContainer(context: Context) {
     val getDelegationTree = GetDelegationTreeUseCase(repository)
     val searchKeyword = SearchKeywordUseCase(repository)
     val getLawVersions = GetLawVersionsUseCase(repository)
+    val buildPdfExtras = com.hdlee73.everylaw.core.domain.BuildPdfExtrasUseCase(repository)
     val getLawArticles = GetLawArticlesUseCase(repository)
     val getPrecedent = GetPrecedentUseCase(repository)
     val getAdminRule = GetAdminRuleUseCase(repository)

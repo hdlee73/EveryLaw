@@ -52,6 +52,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +72,8 @@ import com.hdlee73.everylaw.core.model.PrecedentSummary
 import com.hdlee73.everylaw.core.model.formatYmd
 import com.hdlee73.everylaw.ui.tree.LawTreeView
 import com.hdlee73.everylaw.ui.tree.PdfExporter
+import com.hdlee73.everylaw.ui.tree.PdfOptions
+import com.hdlee73.everylaw.ui.tree.PdfOptionsDialog
 import com.hdlee73.everylaw.ui.tree.PrecedentRow
 import kotlinx.coroutines.launch
 
@@ -114,6 +119,7 @@ fun SearchScreen(
                         onExpandAll = vm::expandAll,
                         onVersions = vm::openVersions,
                         onOpenSettings = onOpenSettings,
+                        buildExtras = vm::pdfExtras,
                     )
                 },
                 onToggle = vm::toggle,
@@ -188,16 +194,38 @@ private fun TreeHeader(
     onExpandAll: (Boolean) -> Unit,
     onVersions: () -> Unit,
     onOpenSettings: () -> Unit,
+    buildExtras: suspend (PdfOptions) -> com.hdlee73.everylaw.core.model.PdfExtras,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 범위 선택 창: null 이면 닫힘, true 면 공유, false 면 파일로 저장
+    var chooseFor by remember { mutableStateOf<Boolean?>(null) }
+    var options by remember { mutableStateOf(PdfOptions()) }
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) scope.launch {
+            Toast.makeText(context, "PDF를 만드는 중이에요", Toast.LENGTH_SHORT).show()
             runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { PdfExporter.write(tree, it) } ?: error("파일을 열 수 없어요")
+                val extras = buildExtras(options)
+                context.contentResolver.openOutputStream(uri)?.use { PdfExporter.write(tree, options, extras, it) } ?: error("파일을 열 수 없어요")
             }.onSuccess { Toast.makeText(context, "PDF를 저장했어요", Toast.LENGTH_SHORT).show() }
                 .onFailure { Toast.makeText(context, "PDF 저장 실패: ${it.message}", Toast.LENGTH_LONG).show() }
         }
+    }
+    chooseFor?.let { share ->
+        PdfOptionsDialog(
+            initial = options,
+            confirmLabel = if (share) "공유" else "저장",
+            onDismiss = { chooseFor = null },
+            onConfirm = { chosen ->
+                options = chosen
+                chooseFor = null
+                if (share) scope.launch {
+                    Toast.makeText(context, "PDF를 만드는 중이에요", Toast.LENGTH_SHORT).show()
+                    runCatching { PdfExporter.share(context, tree, chosen, buildExtras(chosen)) }
+                        .onFailure { Toast.makeText(context, "PDF 공유 실패: ${it.message}", Toast.LENGTH_LONG).show() }
+                } else saveLauncher.launch(PdfExporter.fileName(tree))
+            },
+        )
     }
 
     Column(
@@ -229,12 +257,12 @@ private fun TreeHeader(
             }
             AssistChip(onClick = onVersions, label = { Text("시행 연혁") }, leadingIcon = { Icon(Icons.Outlined.History, null) })
             AssistChip(
-                onClick = { saveLauncher.launch(PdfExporter.fileName(tree)) },
+                onClick = { chooseFor = false },
                 label = { Text("PDF 저장") },
                 leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
             )
             AssistChip(
-                onClick = { scope.launch { runCatching { PdfExporter.share(context, tree) } } },
+                onClick = { chooseFor = true },
                 label = { Text("공유") },
                 leadingIcon = { Icon(Icons.Outlined.Share, null) },
             )

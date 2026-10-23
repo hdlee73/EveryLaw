@@ -3,6 +3,8 @@ package com.hdlee73.everylaw.core.domain
 import com.hdlee73.everylaw.core.model.AdminRuleDocument
 import com.hdlee73.everylaw.core.model.Article
 import com.hdlee73.everylaw.core.model.ArticleNo
+import com.hdlee73.everylaw.core.model.ItemPath
+import com.hdlee73.everylaw.core.model.LawNode
 import com.hdlee73.everylaw.core.model.DelegationTree
 import com.hdlee73.everylaw.core.model.KeywordSearchResult
 import com.hdlee73.everylaw.core.model.LawQuery
@@ -76,7 +78,8 @@ class GetDelegationTreeUseCase(
             }.getOrDefault(emptyList()).firstOrNull { it.number.sameAs(query.article) }
         }
         val fromRow = row?.law?.takeIf { it.content.isNotBlank() }
-        val lawArticle: Article = (if (version != null) fetched() ?: fromRow else fromRow ?: fetched())
+        // 항·호·목으로 나눌 수 있게 줄 구조가 살아 있는 본문 조회를 우선하고, 실패하면 3단 비교 본문을 쓴다.
+        val lawArticle: Article = (fetched() ?: fromRow)
             ?: throw LawDomainException.NotFound("${law.name}에 ${query.article.display}가 없어요.")
 
         // 3단 비교가 시행령·시행규칙을 돌려주지 않으면, 시행령·시행규칙 본문에서 "법 제N조"를 인용한 조문을 직접 찾는다.
@@ -122,7 +125,7 @@ class GetDelegationTreeUseCase(
             Triple(sup.await(), det.await(), prec.await())
         }
 
-        val root = builder.build(
+        var root = builder.build(
             DelegationTreeBuilder.Input(
                 lawName = law.name,
                 lawArticle = lawArticle,
@@ -134,6 +137,8 @@ class GetDelegationTreeUseCase(
                 details = details,
             )
         )
+        if (!query.path.isEmpty) root = focusOn(root, query, warnings)
+
         emit(
             DelegationProgress.Done(
                 DelegationTree(
@@ -148,6 +153,24 @@ class GetDelegationTreeUseCase(
                 )
             )
         )
+    }
+
+    /** 항·호·목까지 지정한 검색: 그 부분의 본문과, 그 위치로 연결된 하위 규정만 남긴다. */
+    private fun focusOn(root: LawNode, query: LawQuery, warnings: MutableList<String>): LawNode {
+        val parsed = root.article.parsed
+        val target = parsed.find(query.path)
+            ?: throw LawDomainException.NotFound("${root.sourceName} ${query.article.display}에 ${query.path.display}이(가) 없어요.")
+        val body = buildString {
+            if (parsed.header.isNotBlank()) append(parsed.header).append('\n')
+            // 호·목을 지정했으면 문맥을 위해 상위 항의 첫 줄도 함께 보여 준다.
+            if (query.path.subparagraph != null && query.path.paragraph != null) {
+                parsed.find(ItemPath(query.path.paragraph))?.let { append(it.text.lines().first()).append('\n') }
+            }
+            target.flatten().forEach { append(it.text).append('\n') }
+        }.trim()
+        val kept = root.children.filter { c -> c.anchor?.startsWith(query.path) == true }
+        if (kept.isEmpty()) warnings += "${query.path.display}에 직접 연결된 하위 규정을 찾지 못했어요. 본문에 '대통령령으로 정하는' 등 위임 문구가 있어도 시행령이 그 위치를 인용하지 않으면 연결되지 않습니다."
+        return root.copy(article = root.article.copy(content = body), children = kept)
     }
 
     /** 이름이 [name]인 법령(시행령·시행규칙) 본문에서 [matches]에 맞는 조문을 모은다. 실패하면 null. */
@@ -254,4 +277,60 @@ class GetAdminRuleUseCase(private val repository: LawRepository) {
 
 class GetPrecedentUseCase(private val repository: LawRepository) {
     suspend operator fun invoke(serialNo: String): PrecedentDetail = repository.getPrecedent(serialNo)
+}
+
+/** PDF 범위 선택에 따라 필요한 판례 본문·관련 조문을 내려받는다. 일부가 실패해도 나머지는 담는다. */
+class BuildPdfExtrasUseCase(private val repository: LawRepository) {
+    suspend operator fun invoke(
+        tree: DelegationTree,
+        precedentBodies: Boolean,
+        relatedArticles: Boolean,
+    ): com.hdlee73.everylaw.core.model.PdfExtras = coroutineScope {
+        val precs = async {
+            if (!precedentBodies) emptyList()
+            else tree.precedents.take(MAX_PRECEDENTS).map { p ->
+                async { runCatching { repository.getPrecedent(p.serialNo) }.getOrNull() }
+            }.awaitAll().filterNotNull()
+        }
+        val related = async {
+            if (!relatedArticles) emptyList() else loadRelated(tree)
+        }
+        com.hdlee73.everylaw.core.model.PdfExtras(precs.await(), related.await())
+    }
+
+    /** 법률 조문 본문이 인용한 같은 법의 다른 조문 (자기 자신 제외) */
+    private suspend fun loadRelated(tree: DelegationTree): List<Article> {
+        val self = tree.query.article
+        val ctx = com.hdlee73.everylaw.core.parser.CitationLinker.Context(tree.law.name)
+        val numbers = com.hdlee73.everylaw.core.parser.CitationLinker.find(tree.root.article.content, ctx)
+            .filter { it.query.startsWith(tree.law.name + " ") }
+            .mapNotNull { ArticleNo.parse(it.query.removePrefix(tree.law.name)) }
+            .filter { it != self }
+            .distinct()
+            .take(MAX_RELATED)
+        return coroutineScope {
+            numbers.map { no ->
+                async {
+                    runCatching { repository.getLawArticles(tree.law, no).firstOrNull { it.number.sameAs(no) } }.getOrNull()
+                }
+            }.awaitAll().filterNotNull()
+        }
+    }
+
+    companion object {
+        const val MAX_PRECEDENTS = 10
+        const val MAX_RELATED = 8
+    }
+}
+
+/** 법률 조문의 항·호·목 위치별로 그 위치를 위임 근거로 삼는 하위 규정 노드를 묶는다. 빈 위치 = 조 전체. */
+object ItemAttachment {
+    fun attach(article: Article, children: List<LawNode>): Map<ItemPath, List<LawNode>> {
+        val paths = article.parsed.allPaths()
+        return children.groupBy { c ->
+            var p = c.anchor ?: ItemPath()
+            while (!p.isEmpty && p !in paths) p = p.parent()
+            p
+        }
+    }
 }

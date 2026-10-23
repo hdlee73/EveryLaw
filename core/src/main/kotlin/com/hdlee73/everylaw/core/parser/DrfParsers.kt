@@ -83,13 +83,7 @@ object DrfParsers {
             .map { unit ->
                 val no = unit.childText("조문번호")
                 val branch = unit.childText("조문가지번호")?.toIntOrNull()?.takeIf { it > 0 }
-                val body = buildString {
-                    unit.childText("조문내용")?.let { append(it) }
-                    unit.children.filter { it.name == "항" }.forEach { hang ->
-                        if (isNotEmpty()) append('\n')
-                        append(hang.deepText())
-                    }
-                }
+                val body = bodyLines(unit).joinToString("\n")
                 Article(
                     number = no?.let { ArticleNo.of(it, branch) },
                     title = unit.childText("조문제목").orEmpty(),
@@ -97,6 +91,28 @@ object DrfParsers {
                 )
             }
         return LawBody(name, articles)
+    }
+
+    /** 항·호·목은 번호(항번호)와 내용(항내용)이 따로 오는데 내용에 번호가 이미 들어 있는 경우가 많아, 겹치지 않게 한 줄씩 만든다. */
+    private fun bodyLines(unit: XmlNode): List<String> {
+        val lines = mutableListOf<String>()
+        fun labelled(label: String?, text: String?): String? {
+            val t = text?.trim().orEmpty()
+            if (t.isEmpty()) return null
+            val l = label?.trim().orEmpty()
+            return if (l.isEmpty() || t.startsWith(l)) t else "$l $t"
+        }
+        unit.childText("조문내용")?.let { lines += it.trim() }
+        for (hang in unit.children.filter { it.name == "항" }) {
+            labelled(hang.childText("항번호"), hang.childText("항내용"))?.let { lines += it }
+            for (ho in hang.children.filter { it.name == "호" }) {
+                labelled(ho.childText("호번호"), ho.childText("호내용"))?.let { lines += it }
+                for (mok in ho.children.filter { it.name == "목" }) {
+                    labelled(mok.childText("목번호"), mok.childText("목내용"))?.let { lines += it }
+                }
+            }
+        }
+        return lines
     }
 
     // ---------- 위임조문 3단비교 (lawService target=thdCmp, knd=2) ----------

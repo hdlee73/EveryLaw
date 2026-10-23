@@ -37,7 +37,7 @@ fun OcGuideText(hasBuiltInKey: Boolean, usingOwnKey: Boolean) {
         if (!usingOwnKey) {
             Text(
                 "본인 OC를 무료로 발급받아 입력하면 더 안정적으로 쓸 수 있어요.\n" +
-                    "① open.law.go.kr 회원가입·로그인 → ② OPEN API › 활용 신청 → ③ 승인되면 가입 이메일의 @ 앞부분(ID)이 OC예요 → ④ 설정 › 내 OC로 바꾸기에 입력",
+                    "① open.law.go.kr 회원가입·로그인 → ② OPEN API › 활용 신청 → ③ 승인 후 마이페이지 › API인증키 관리의 '현재 API인증키(OC)' 값을 복사 → ④ 설정 › 내 OC로 바꾸기에 입력",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

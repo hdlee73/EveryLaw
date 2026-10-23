@@ -144,7 +144,7 @@ fun DocumentScreen(
                         Text("조문을 누르면 하위 규정까지 위임 트리로 보여드려요.", style = MaterialTheme.typography.bodySmall)
                     }
                     items(doc.articles, key = { it.heading + it.content.hashCode() }) { a ->
-                        ArticleCard(a, onTree = doc.law?.let { law -> a.number?.let { no -> { onOpenTree("${law.name} ${no.display}") } } })
+                        ArticleCard(a, doc.law?.name ?: doc.title, onTree = doc.law?.let { law -> a.number?.let { no -> { onOpenTree("${law.name} ${no.display}") } } })
                     }
                 }
             }
@@ -153,7 +153,7 @@ fun DocumentScreen(
 }
 
 @Composable
-private fun ArticleCard(a: Article, onTree: (() -> Unit)?) {
+private fun ArticleCard(a: Article, docName: String, onTree: (() -> Unit)?) {
     Card(
         modifier = Modifier.fillMaxWidth().let { if (onTree != null) it.clickable(role = Role.Button, onClick = onTree) else it },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -163,7 +163,11 @@ private fun ArticleCard(a: Article, onTree: (() -> Unit)?) {
                 Text(a.heading, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 if (onTree != null) Icon(Icons.Outlined.AccountTree, contentDescription = "위임 트리 보기", tint = MaterialTheme.colorScheme.primary)
             }
-            Text(a.content, style = LawBodyStyle, maxLines = 8, overflow = TextOverflow.Ellipsis)
+            com.hdlee73.everylaw.ui.CitationText(
+                a.content,
+                com.hdlee73.everylaw.core.parser.CitationLinker.Context(docName, ownName = docName.takeIf { onTree != null }),
+                style = LawBodyStyle, maxLines = 8, overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

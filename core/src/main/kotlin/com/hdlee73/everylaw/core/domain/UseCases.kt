@@ -79,6 +79,35 @@ class GetDelegationTreeUseCase(
         val lawArticle: Article = (if (version != null) fetched() ?: fromRow else fromRow ?: fetched())
             ?: throw LawDomainException.NotFound("${law.name}에 ${query.article.display}가 없어요.")
 
+        // 3단 비교가 시행령·시행규칙을 돌려주지 않으면, 시행령·시행규칙 본문에서 "법 제N조"를 인용한 조문을 직접 찾는다.
+        var decrees = row?.decrees.orEmpty()
+        var rules = row?.rules.orEmpty()
+        var decreeName = threeTier?.decreeName
+        var ruleName = threeTier?.ruleName
+        if (decrees.isEmpty()) {
+            emit(DelegationProgress.Step("시행령 본문에서 위임 조문 찾는 중"))
+            val found = findCitingArticles(decreeName ?: "${law.name} 시행령", version == null, warnings) { text ->
+                DelegationTreeBuilder.refersTo(text, DelegationTreeBuilder.LAW_PREFIX, query.article)
+            }
+            if (found != null && found.second.isNotEmpty()) {
+                decreeName = found.first
+                decrees = found.second
+                warnings += "3단 비교에서 시행령 연결을 받지 못해, 시행령 본문의 '법 ${query.article.display}' 인용으로 찾았습니다."
+            }
+        }
+        if (rules.isEmpty()) {
+            emit(DelegationProgress.Step("시행규칙 본문에서 위임 조문 찾는 중"))
+            val decreeNos = decrees.mapNotNull { it.number }
+            val found = findCitingArticles(ruleName ?: "${law.name} 시행규칙", version == null, warnings) { text ->
+                DelegationTreeBuilder.refersTo(text, DelegationTreeBuilder.LAW_PREFIX, query.article) ||
+                    decreeNos.any { DelegationTreeBuilder.refersTo(text, DelegationTreeBuilder.DECREE_PREFIX, it) }
+            }
+            if (found != null && found.second.isNotEmpty()) {
+                ruleName = found.first
+                rules = found.second
+            }
+        }
+
         emit(DelegationProgress.Step("감독규정·시행세칙과 판례 찾는 중"))
         val (supervisory, details, precedents) = coroutineScope {
             val names = async { relatedAdminRuleNames(law) }
@@ -97,10 +126,10 @@ class GetDelegationTreeUseCase(
             DelegationTreeBuilder.Input(
                 lawName = law.name,
                 lawArticle = lawArticle,
-                decreeName = threeTier?.decreeName,
-                decrees = row?.decrees.orEmpty(),
-                ruleName = threeTier?.ruleName,
-                rules = row?.rules.orEmpty(),
+                decreeName = decreeName,
+                decrees = decrees,
+                ruleName = ruleName,
+                rules = rules,
                 supervisory = supervisory,
                 details = details,
             )
@@ -119,6 +148,24 @@ class GetDelegationTreeUseCase(
                 )
             )
         )
+    }
+
+    /** 이름이 [name]인 법령(시행령·시행규칙) 본문에서 [matches]에 맞는 조문을 모은다. 실패하면 null. */
+    private suspend fun findCitingArticles(
+        name: String,
+        current: Boolean,
+        warnings: MutableList<String>,
+        matches: (String) -> Boolean,
+    ): Pair<String, List<Article>>? {
+        if (!current) return null
+        val compact = name.replace(" ", "")
+        return runCatching {
+            val hit = repository.searchLaws(name).let { list ->
+                list.firstOrNull { it.name.replace(" ", "") == compact }
+            } ?: return@runCatching null
+            val articles = repository.getLawArticles(hit).filter { it.number != null && matches(it.content) }
+            hit.name to articles.take(MAX_FALLBACK_ARTICLES)
+        }.onFailure { warnings += "'$name' 본문 조회 실패: ${it.message}" }.getOrNull()
     }
 
     private fun pickLaw(query: LawQuery, candidates: List<LawSummary>): LawSummary? {
@@ -154,6 +201,7 @@ class GetDelegationTreeUseCase(
 
     companion object {
         const val MAX_ADMIN_DOCS = 3
+        const val MAX_FALLBACK_ARTICLES = 30
     }
 }
 

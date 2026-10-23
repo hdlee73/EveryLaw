@@ -37,7 +37,7 @@ object LawQueryParser {
             LawQuery(
                 raw = raw,
                 lawName = LawAliases.resolve(name),
-                article = ArticleNo(main, branch),
+                article = ArticleNo.of(main, branch),
             )
         )
     }

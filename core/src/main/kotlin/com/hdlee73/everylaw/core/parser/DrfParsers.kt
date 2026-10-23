@@ -91,7 +91,7 @@ object DrfParsers {
                     }
                 }
                 Article(
-                    number = no?.let { ArticleNo(it, branch) },
+                    number = no?.let { ArticleNo.of(it, branch) },
                     title = unit.childText("조문제목").orEmpty(),
                     content = body.trim(),
                 )
@@ -138,8 +138,11 @@ object DrfParsers {
         val no = el.childText("조번호", "조문번호")
         val branch = el.childText("조가지번호", "조문가지번호")?.toIntOrNull()?.takeIf { it > 0 }
         val content = el.childText("조내용", "조문내용") ?: el.deepText()
-        val title = el.childText("조제목", "조문제목") ?: titleFromContent(content)
-        val number = no?.let { raw -> ArticleNo.parse(raw) ?: ArticleNo(raw.trim(), branch) }
+        // 3단 비교는 조제목에 "제420조(제목)" 전체를 넣어 주기도 해서, 앞의 조 번호는 떼고 (제목)만 쓴다.
+        val title = el.childText("조제목", "조문제목")?.let { raw ->
+            HEAD.find(raw)?.takeIf { it.range.first == raw.length - raw.trimStart().length }?.groupValues?.get(3) ?: raw
+        } ?: titleFromContent(content)
+        val number = no?.let { raw -> ArticleNo.parse(raw) ?: ArticleNo.of(raw, branch) }
             ?: ArticleNo.parse(content.take(20))
         return Article(number = number?.let { if (branch != null && it.branch == null) it.copy(branch = branch) else it }, title = title, content = content.trim())
     }

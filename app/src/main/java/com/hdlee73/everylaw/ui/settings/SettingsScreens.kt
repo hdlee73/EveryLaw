@@ -187,7 +187,7 @@ fun AboutScreen(vm: SettingsViewModel, onBack: () -> Unit) {
                     // 적응형 아이콘(XML)은 Compose painter로 못 그려서 전경 벡터를 배경색 원 위에 얹는다
                     androidx.compose.foundation.layout.Box(
                         Modifier.size(72.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
-                            .background(androidx.compose.ui.graphics.Color(0xFFE8DEF8)),
+                            .background(androidx.compose.ui.graphics.Color(0xFF0F5C4D)),
                     ) {
                         Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = null, modifier = Modifier.fillMaxSize())
                     }

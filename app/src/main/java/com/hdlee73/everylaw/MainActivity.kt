@@ -171,7 +171,9 @@ private fun EverylawRoot(
         ) { pad ->
             // 바깥 Scaffold가 이미 시스템 바 여백을 줬으니 안쪽 화면의 Scaffold가 중복 적용하지 않도록 소비 처리
             Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
-                EverylawNavHost(nav, isWide, factory, searchVm, settingsVm, runQuery)
+                com.hdlee73.everylaw.ui.ProvideCitationHandler(onCite = runQuery) {
+                    EverylawNavHost(nav, isWide, factory, searchVm, settingsVm, runQuery)
+                }
             }
         }
     }

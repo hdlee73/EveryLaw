@@ -164,3 +164,35 @@ class AsOfTest {
         assertTrue(tree.root.article.content.contains("2024.01.01 시행 당시"))
     }
 }
+
+class CitationLinkerTest {
+    private val ctx = com.hdlee73.everylaw.core.parser.CitationLinker.Context("자본시장법", "자본시장법 시행령", "자본시장법 시행규칙")
+    private fun queries(text: String, c: com.hdlee73.everylaw.core.parser.CitationLinker.Context = ctx) =
+        com.hdlee73.everylaw.core.parser.CitationLinker.find(text, c).map { it.query }
+
+    @Test fun bareAndBranchCitationsUseOwnLaw() {
+        assertEquals(listOf("자본시장법 제12조", "자본시장법 제16조의2", "자본시장법 제18조"),
+            queries("제12조에 따른 인가, 제16조의2에 따른 등록 또는 제18조"))
+    }
+
+    @Test fun prefixesPickTheRightLaw() {
+        assertEquals(listOf("자본시장법 제11조", "자본시장법 시행령 제16조", "자본시장법 시행규칙 제2조"),
+            queries("법 제11조, 영 제16조 및 시행규칙 제2조"))
+    }
+
+    @Test fun bracketedOtherLawKeepsItsName() {
+        assertEquals(listOf("금융소비자 보호에 관한 법률 제51조"), queries("「금융소비자 보호에 관한 법률」 제51조제1항제4호"))
+    }
+
+    @Test fun unbracketedOtherLawAndAdminRules() {
+        assertEquals(listOf("은행법 제34조"), queries("은행법 제34조"))
+        val sup = ctx.copy(ownName = null)
+        assertEquals(listOf("자본시장법 제11조"), queries("제2-3조와 법 제11조", sup).let { it })
+    }
+
+    @Test fun leadingZeroNumbersMatchCitations() {
+        val no = ArticleNo.of("0420")
+        assertEquals("420", no.main)
+        assertTrue(DelegationTreeBuilder.refersTo("법 제420조제1항", DelegationTreeBuilder.LAW_PREFIX, no))
+    }
+}

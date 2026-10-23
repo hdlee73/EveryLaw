@@ -28,6 +28,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import com.hdlee73.everylaw.ui.CitationText
+import com.hdlee73.everylaw.ui.citationContext
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -117,6 +119,7 @@ private fun AccordionTreeView(
         items(nodes, key = { it.node.id }) { v ->
             AccordionNodeCard(
                 node = v.node,
+                ctx = citationContext(state.tree.root, v.node),
                 depth = v.depth,
                 expanded = v.node.id in state.expanded,
                 onToggle = { onToggle(v.node.id) },
@@ -130,6 +133,7 @@ private fun AccordionTreeView(
 @Composable
 private fun AccordionNodeCard(
     node: LawNode,
+    ctx: com.hdlee73.everylaw.core.parser.CitationLinker.Context,
     depth: Int,
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -176,13 +180,13 @@ private fun AccordionNodeCard(
             Icon(Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.rotate(rotation))
         }
         AnimatedVisibility(expanded) {
-            SelectionContainer {
-                Text(
-                    node.article.content,
-                    style = LawBodyStyle,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                )
-            }
+            CitationText(
+                node.article.content,
+                ctx,
+                style = LawBodyStyle,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                selectable = true,
+            )
         }
     }
 }
@@ -323,7 +327,7 @@ private fun NodeDetail(tree: DelegationTree, node: LawNode, onSelect: (String) -
         }
         Text(node.sourceName, style = MaterialTheme.typography.titleMedium)
         Text(node.article.heading, style = MaterialTheme.typography.headlineSmall)
-        SelectionContainer { Text(node.article.content, style = LawBodyStyle) }
+        CitationText(node.article.content, citationContext(tree.root, node), style = LawBodyStyle, selectable = true)
 
         if (node.children.isNotEmpty()) {
             HorizontalDivider()

@@ -30,8 +30,14 @@ data class ArticleNo(val main: String, val branch: Int? = null) {
     companion object {
         private val PATTERN = Regex("""제?\s*(\d+(?:-\d+)*)\s*조(?:\s*의\s*(\d+))?""")
 
+        /** API는 조번호를 "0420"처럼 0을 채워 주기도 한다. 본문 인용("제420조")과 맞도록 "420"으로 통일한다. */
+        fun normalizeMain(raw: String): String =
+            raw.trim().split('-').joinToString("-") { it.trimStart('0').ifEmpty { "0" } }
+
+        fun of(main: String, branch: Int? = null) = ArticleNo(normalizeMain(main), branch)
+
         fun parse(text: String): ArticleNo? = PATTERN.find(text)?.let {
-            ArticleNo(it.groupValues[1], it.groupValues[2].toIntOrNull())
+            of(it.groupValues[1], it.groupValues[2].toIntOrNull())
         }
     }
 }

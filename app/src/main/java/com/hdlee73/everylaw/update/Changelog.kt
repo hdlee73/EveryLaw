@@ -6,6 +6,10 @@ object Changelog {
 
     val entries = listOf(
         Entry(
+            "1.0.3", "2026-10-23",
+            listOf("검색 시 'DOMException: 키워드' 오류로 모든 조회가 실패하던 문제 수정(XML 파서를 SAX로 교체)"),
+        ),
+        Entry(
             "1.0.2", "2026-10-23",
             listOf(
                 "키워드 검색 오류 원인을 구체적으로 표시(법령·행정규칙·판례별 실패 사유, 복사 가능)",

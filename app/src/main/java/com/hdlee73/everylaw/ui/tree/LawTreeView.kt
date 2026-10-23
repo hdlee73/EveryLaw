@@ -329,7 +329,6 @@ private fun SplitTreeView(
         ) {
             item(key = "header") { Column { header() } }
             stickyHeader(key = "actions") { actions() }
-        stickyHeader(key = "actions") { actions() }
             item(key = "article") {
                 val root = state.tree.root
                 ArticleCard {

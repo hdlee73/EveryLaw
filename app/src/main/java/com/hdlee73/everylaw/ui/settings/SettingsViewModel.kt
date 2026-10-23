@@ -25,6 +25,7 @@ class SettingsViewModel(
 
     fun saveOc(value: String) = viewModelScope.launch { store.setOc(value) }
     fun markOcGuideSeen() = viewModelScope.launch { store.markOcGuideSeen() }
+    fun setSplitMode(value: com.hdlee73.everylaw.data.SplitMode) = viewModelScope.launch { store.setSplitMode(value) }
     fun setAutoUpdate(value: Boolean) = viewModelScope.launch { store.setAutoUpdate(value) }
 
     fun checkUpdate() = viewModelScope.launch {

@@ -3,6 +3,7 @@ package com.hdlee73.everylaw.ui.search
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -100,7 +101,7 @@ fun SearchScreen(
             onQueryChange = vm::onQueryChange,
             onSearch = { vm.submit() },
             onAsOfChange = vm::setAsOf,
-            modifier = Modifier.padding(horizontal = if (isWide) 0.dp else 14.dp, vertical = 12.dp),
+            showHeadline = state is SearchUiState.Idle,
         )
     }
 
@@ -232,19 +233,23 @@ private fun TreeHeader(
         Modifier.padding(horizontal = if (isWide) 0.dp else 14.dp).padding(bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(tree.law.abbreviation ?: tree.law.name, style = MaterialTheme.typography.headlineSmall)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${tree.query.target} 위임 구조",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
-            )
+        Row(
+            Modifier.fillMaxWidth().background(com.hdlee73.everylaw.ui.theme.Navy, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(start = 18.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(tree.law.name, style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.75f))
+                Text(
+                    "${tree.query.target} 위임 구조",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = androidx.compose.ui.graphics.Color.White,
+                )
+            }
             IconButton(onClick = onToggleFavorite) {
                 Icon(
                     if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
                     contentDescription = if (isFavorite) "즐겨찾기 해제" else "즐겨찾기 추가",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = com.hdlee73.everylaw.ui.theme.Gold,
                 )
             }
         }
@@ -306,14 +311,14 @@ private fun IdleContent(
             }
         }
         if (favorites.isNotEmpty()) {
-            Text("즐겨찾기", style = MaterialTheme.typography.titleSmall)
+            Text("보관함", style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 favorites.take(8).forEach { AssistChip(onClick = { onPick(it) }, label = { Text(it) }, leadingIcon = { Icon(Icons.Filled.Star, null, Modifier.size(18.dp)) }) }
             }
         }
         if (recent.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("최근 검색", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text("최근 조회", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 TextButton(onClick = onClearRecent) { Text("지우기") }
             }
             recent.take(6).forEach { q ->

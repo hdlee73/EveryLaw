@@ -12,43 +12,57 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hdlee73.everylaw.R
 import com.hdlee73.everylaw.core.model.LawLevel
 
-// 시안 C · 머티리얼 유 (Tonal): M3 baseline 보라 + 계층별 톤 컨테이너
+// 시안 2 · 네이비 프로: 남색(주색) + 금색(포인트) + 링크 블루. 카드는 흰색, 바탕은 옅은 청회색.
+val Navy = Color(0xFF0B1B3A)
+val Gold = Color(0xFFC8A24A)
+val GoldTint = Color(0xFFF6EEDB)
+val LinkBlue = Color(0xFF2F5BD3)
+
 private val Light = lightColorScheme(
-    primary = Color(0xFF6750A4), onPrimary = Color.White,
-    primaryContainer = Color(0xFFE8DEF8), onPrimaryContainer = Color(0xFF4F378B),
-    secondaryContainer = Color(0xFFE8DEF8), onSecondaryContainer = Color(0xFF4F378B),
-    background = Color(0xFFFEF7FF), onBackground = Color(0xFF1D1B20),
-    surface = Color(0xFFFEF7FF), onSurface = Color(0xFF1D1B20),
-    surfaceVariant = Color(0xFFE7E0EC), onSurfaceVariant = Color(0xFF49454F),
+    primary = Navy, onPrimary = Color.White,
+    primaryContainer = GoldTint, onPrimaryContainer = Navy,
+    secondary = Gold, onSecondary = Navy,
+    secondaryContainer = GoldTint, onSecondaryContainer = Color(0xFF3F3010),
+    tertiary = LinkBlue, onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFE7ECF8), onTertiaryContainer = Navy,
+    background = Color(0xFFF4F6FA), onBackground = Navy,
+    surface = Color(0xFFF4F6FA), onSurface = Navy,
+    surfaceVariant = Color(0xFFE7ECF8), onSurfaceVariant = Color(0xFF56627A),
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF7F2FA),
-    surfaceContainer = Color(0xFFF3EDF7),
-    surfaceContainerHigh = Color(0xFFECE6F0),
-    surfaceContainerHighest = Color(0xFFE6E0E9),
-    outline = Color(0xFF79747E), outlineVariant = Color(0xFFCAC4D0),
+    surfaceContainerLow = Color.White,
+    surfaceContainer = Color.White,
+    surfaceContainerHigh = Color(0xFFEDF0F6),
+    surfaceContainerHighest = Color(0xFFE7ECF8),
+    outline = Color(0xFF8994AA), outlineVariant = Color(0xFFD6DDEA),
 )
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFFD0BCFF), onPrimary = Color(0xFF381E72),
-    primaryContainer = Color(0xFF4F378B), onPrimaryContainer = Color(0xFFEADDFF),
-    secondaryContainer = Color(0xFF4A4458), onSecondaryContainer = Color(0xFFE8DEF8),
-    background = Color(0xFF141218), onBackground = Color(0xFFE6E0E9),
-    surface = Color(0xFF141218), onSurface = Color(0xFFE6E0E9),
-    surfaceVariant = Color(0xFF49454F), onSurfaceVariant = Color(0xFFCAC4D0),
-    surfaceContainerLowest = Color(0xFF0F0D13),
-    surfaceContainerLow = Color(0xFF1D1B20),
-    surfaceContainer = Color(0xFF211F26),
-    surfaceContainerHigh = Color(0xFF2B2930),
-    surfaceContainerHighest = Color(0xFF36343B),
-    outline = Color(0xFF938F99), outlineVariant = Color(0xFF49454F),
+    primary = Color(0xFFE9CF8E), onPrimary = Navy,
+    primaryContainer = Color(0xFF3A3220), onPrimaryContainer = Color(0xFFF6EEDB),
+    secondary = Gold, onSecondary = Navy,
+    secondaryContainer = Color(0xFF3A3220), onSecondaryContainer = Color(0xFFF6EEDB),
+    tertiary = Color(0xFF9DB6FF), onTertiary = Color(0xFF0A1F5C),
+    tertiaryContainer = Color(0xFF1C2A4B), onTertiaryContainer = Color(0xFFDCE4FF),
+    background = Color(0xFF0A1226), onBackground = Color(0xFFE3E8F5),
+    surface = Color(0xFF0A1226), onSurface = Color(0xFFE3E8F5),
+    surfaceVariant = Color(0xFF1C2A4B), onSurfaceVariant = Color(0xFFB9C3D9),
+    surfaceContainerLowest = Color(0xFF070D1C),
+    surfaceContainerLow = Color(0xFF0F1A33),
+    surfaceContainer = Color(0xFF121F3B),
+    surfaceContainerHigh = Color(0xFF182848),
+    surfaceContainerHighest = Color(0xFF1F3158),
+    outline = Color(0xFF7C88A3), outlineVariant = Color(0xFF2A3A5E),
 )
 
-/** 계층 하나의 톤: 카드 배경(container), 카드 글자(onContainer), 배지(accent/onAccent) */
+/** 계층 하나의 톤: 카드 배경(container), 카드 글자(onContainer), 배지·단계 번호(accent/onAccent) */
 @Immutable
 data class LevelTone(val container: Color, val onContainer: Color, val accent: Color, val onAccent: Color)
 
@@ -59,44 +73,63 @@ data class LevelPalette(private val tones: Map<LawLevel, LevelTone>) {
 
 private val LightLevels = LevelPalette(
     mapOf(
-        LawLevel.LAW to LevelTone(Color(0xFFE8DEF8), Color(0xFF381E72), Color(0xFF6750A4), Color.White),
-        LawLevel.DECREE to LevelTone(Color(0xFFD3E4FF), Color(0xFF0A3A6B), Color(0xFF0B5CAD), Color.White),
-        LawLevel.RULE to LevelTone(Color(0xFFC9F0E0), Color(0xFF07402F), Color(0xFF0F6B50), Color.White),
-        LawLevel.SUPERVISORY_REGULATION to LevelTone(Color(0xFFFFE0CC), Color(0xFF5C2600), Color(0xFF9A4400), Color.White),
-        LawLevel.ENFORCEMENT_DETAIL to LevelTone(Color(0xFFFFD8E4), Color(0xFF5E0A2B), Color(0xFF9C2452), Color.White),
+        LawLevel.LAW to LevelTone(Color(0xFFE7ECF8), Navy, Navy, Color.White),
+        LawLevel.DECREE to LevelTone(Color(0xFFE7ECF8), Navy, LinkBlue, Color.White),
+        LawLevel.RULE to LevelTone(Color(0xFFE3F4F0), Color(0xFF0B3D35), Color(0xFF0F7B6C), Color.White),
+        LawLevel.SUPERVISORY_REGULATION to LevelTone(GoldTint, Color(0xFF3F3010), Gold, Navy),
+        LawLevel.ENFORCEMENT_DETAIL to LevelTone(Color(0xFFE3E8F1), Navy, Color(0xFF56627A), Color.White),
     )
 )
 
 private val DarkLevels = LevelPalette(
     mapOf(
-        LawLevel.LAW to LevelTone(Color(0xFF3B2E5A), Color(0xFFEADDFF), Color(0xFFD0BCFF), Color(0xFF381E72)),
-        LawLevel.DECREE to LevelTone(Color(0xFF173A5E), Color(0xFFD3E4FF), Color(0xFFA4C9FF), Color(0xFF00315D)),
-        LawLevel.RULE to LevelTone(Color(0xFF113E31), Color(0xFFC9F0E0), Color(0xFF8DD7B8), Color(0xFF003828)),
-        LawLevel.SUPERVISORY_REGULATION to LevelTone(Color(0xFF4A2A12), Color(0xFFFFE0CC), Color(0xFFFFB68A), Color(0xFF532200)),
-        LawLevel.ENFORCEMENT_DETAIL to LevelTone(Color(0xFF4D1F30), Color(0xFFFFD8E4), Color(0xFFFFB0C8), Color(0xFF5E1133)),
+        LawLevel.LAW to LevelTone(Color(0xFF1C2A4B), Color(0xFFE3E8F5), Color(0xFFE3E8F5), Navy),
+        LawLevel.DECREE to LevelTone(Color(0xFF1C2A4B), Color(0xFFE3E8F5), Color(0xFF9DB6FF), Color(0xFF0A1F5C)),
+        LawLevel.RULE to LevelTone(Color(0xFF123A33), Color(0xFFD3F1EA), Color(0xFF6FD0BF), Color(0xFF00382F)),
+        LawLevel.SUPERVISORY_REGULATION to LevelTone(Color(0xFF3A3220), Color(0xFFF6EEDB), Gold, Navy),
+        LawLevel.ENFORCEMENT_DETAIL to LevelTone(Color(0xFF243350), Color(0xFFD5DCEC), Color(0xFFA8B3CC), Navy),
     )
 )
 
 val LocalLevelPalette = staticCompositionLocalOf { LightLevels }
 
+/** IBM Plex Sans KR (SIL OFL). 보통·굵게만 넣고 중간 굵기는 가장 가까운 쪽을 쓴다. */
+val PlexKr = FontFamily(
+    Font(R.font.ibm_plex_sans_kr_regular, FontWeight.Normal),
+    Font(R.font.ibm_plex_sans_kr_regular, FontWeight.Medium),
+    Font(R.font.ibm_plex_sans_kr_bold, FontWeight.SemiBold),
+    Font(R.font.ibm_plex_sans_kr_bold, FontWeight.Bold),
+)
+
 private val AppTypography = Typography().run {
+    fun TextStyle.plex(weight: FontWeight? = null) = copy(fontFamily = PlexKr, fontWeight = weight ?: fontWeight)
     copy(
-        headlineMedium = headlineMedium.copy(fontWeight = FontWeight.Black),
-        headlineSmall = headlineSmall.copy(fontWeight = FontWeight.Black),
-        titleMedium = titleMedium.copy(fontWeight = FontWeight.Bold),
-        bodyMedium = bodyMedium.copy(lineHeight = 22.sp),
-        bodyLarge = bodyLarge.copy(lineHeight = 26.sp),
+        displayLarge = displayLarge.plex(), displayMedium = displayMedium.plex(), displaySmall = displaySmall.plex(),
+        headlineLarge = headlineLarge.plex(FontWeight.Bold),
+        headlineMedium = headlineMedium.plex(FontWeight.Bold),
+        headlineSmall = headlineSmall.plex(FontWeight.Bold),
+        titleLarge = titleLarge.plex(FontWeight.Bold),
+        titleMedium = titleMedium.plex(FontWeight.Bold),
+        titleSmall = titleSmall.plex(FontWeight.SemiBold),
+        bodyLarge = bodyLarge.plex().copy(lineHeight = 26.sp),
+        bodyMedium = bodyMedium.plex().copy(lineHeight = 22.sp),
+        bodySmall = bodySmall.plex(),
+        labelLarge = labelLarge.plex(FontWeight.SemiBold),
+        labelMedium = labelMedium.plex(FontWeight.SemiBold),
+        labelSmall = labelSmall.plex(),
     )
 }
 
+// 시안: 카드 16dp, 칩·태그 8dp 안팎의 단정한 모서리
 private val AppShapes = Shapes(
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
-val LawBodyStyle = TextStyle(fontSize = 14.sp, lineHeight = 24.sp)
+val LawBodyStyle = TextStyle(fontFamily = PlexKr, fontSize = 14.sp, lineHeight = 24.sp)
 
 @Composable
 fun EverylawTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {

@@ -26,6 +26,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.hdlee73.everylaw.ui.theme.EverylawIcons
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
@@ -88,11 +97,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class TopLevel(val route: String, val label: String, val selected: ImageVector, val unselected: ImageVector) {
-    Home("home", "홈", Icons.Filled.Home, Icons.Outlined.Home),
-    Favorites("favorites", "즐겨찾기", Icons.Filled.Star, Icons.Outlined.StarOutline),
-    History("history", "기록", Icons.Filled.History, Icons.Outlined.History),
-    Settings("settings", "설정", Icons.Filled.Settings, Icons.Outlined.Settings),
+private enum class TopLevel(val route: String, val label: String, val icon: ImageVector) {
+    Home("home", "검색", EverylawIcons.Search),
+    Favorites("favorites", "보관함", EverylawIcons.Folder),
+    History("history", "최근", EverylawIcons.Clock),
+    Settings("settings", "설정", EverylawIcons.Gear),
 }
 
 @Composable
@@ -108,6 +117,14 @@ private fun EverylawRoot(
     val backEntry by nav.currentBackStackEntryAsState()
     val route = backEntry?.destination?.route
     val current = TopLevel.entries.firstOrNull { it.route == route }
+
+    // 홈 위쪽은 남색 머리띠라 상태 표시줄 아이콘을 밝게, 다른 화면은 밝은 바탕이라 어둡게(라이트 테마 기준)
+    val view = androidx.compose.ui.platform.LocalView.current
+    val dark = isSystemInDarkTheme()
+    androidx.compose.runtime.SideEffect {
+        val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+        androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !dark && current != TopLevel.Home
+    }
 
     LaunchedEffect(Unit) { settingsVm.autoCheckIfDue() }
     UpdateDialog(settingsVm)
@@ -141,6 +158,14 @@ private fun EverylawRoot(
     // 첫 실행 한 번: 기본(공용) 인증키와 본인 OC 발급 안내
     FirstRunOcGuide(settingsVm, onOpenSettings = { goTop(TopLevel.Settings) })
 
+    // 분할 화면 여부: 설정(자동/항상/안 함)을 따른다. 내비게이션 레일/하단바는 화면 크기로만 정한다.
+    val appSettings by settingsVm.settings.collectAsStateWithLifecycle()
+    val split = when (appSettings.splitMode) {
+        com.hdlee73.everylaw.data.SplitMode.Auto -> isWide
+        com.hdlee73.everylaw.data.SplitMode.Always -> true
+        com.hdlee73.everylaw.data.SplitMode.Never -> false
+    }
+
     Row(Modifier.fillMaxSize()) {
         if (isWide && current != null) {
             NavigationRail(Modifier.safeDrawingPadding().padding(top = 12.dp)) {
@@ -148,22 +173,37 @@ private fun EverylawRoot(
                     NavigationRailItem(
                         selected = t == current,
                         onClick = { goTop(t) },
-                        icon = { Icon(if (t == current) t.selected else t.unselected, contentDescription = null) },
+                        icon = { Icon(t.icon, contentDescription = null) },
                         label = { Text(t.label) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                     )
                 }
             }
         }
         Scaffold(
             modifier = Modifier.weight(1f),
+            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             bottomBar = {
-                if (!isWide && current != null) NavigationBar {
+                if (!isWide && current != null) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
                     TopLevel.entries.forEach { t ->
                         NavigationBarItem(
                             selected = t == current,
                             onClick = { goTop(t) },
-                            icon = { Icon(if (t == current) t.selected else t.unselected, contentDescription = null) },
+                            icon = { Icon(t.icon, contentDescription = null) },
                             label = { Text(t.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                         )
                     }
                 }
@@ -172,7 +212,7 @@ private fun EverylawRoot(
             // 바깥 Scaffold가 이미 시스템 바 여백을 줬으니 안쪽 화면의 Scaffold가 중복 적용하지 않도록 소비 처리
             Box(Modifier.padding(pad).consumeWindowInsets(pad)) {
                 com.hdlee73.everylaw.ui.ProvideCitationHandler(onCite = runQuery) {
-                    EverylawNavHost(nav, isWide, factory, searchVm, settingsVm, runQuery)
+                    EverylawNavHost(nav, split, factory, searchVm, settingsVm, runQuery)
                 }
             }
         }
@@ -182,7 +222,7 @@ private fun EverylawRoot(
 @Composable
 private fun EverylawNavHost(
     nav: NavHostController,
-    isWide: Boolean,
+    split: Boolean,
     factory: androidx.lifecycle.ViewModelProvider.Factory,
     searchVm: SearchViewModel,
     settingsVm: SettingsViewModel,
@@ -192,7 +232,7 @@ private fun EverylawNavHost(
         composable(TopLevel.Home.route) {
             SearchScreen(
                 vm = searchVm,
-                isWide = isWide,
+                isWide = split,
                 onOpenPrecedent = { nav.navigate("precedent/${Uri.encode(it.serialNo)}") },
                 onOpenLaw = { law ->
                     nav.navigate(
@@ -206,7 +246,7 @@ private fun EverylawNavHost(
         composable(TopLevel.Favorites.route) {
             val favorites by searchVm.favorites.collectAsStateWithLifecycle()
             QueryListScreen(
-                title = "즐겨찾기",
+                title = "보관함",
                 items = favorites,
                 emptyText = "검색 결과 화면의 ☆ 버튼으로 자주 보는 조문을 저장하세요.",
                 isFavorites = true,
@@ -218,7 +258,7 @@ private fun EverylawNavHost(
         composable(TopLevel.History.route) {
             val recent by searchVm.recent.collectAsStateWithLifecycle()
             QueryListScreen(
-                title = "최근 기록",
+                title = "최근",
                 items = recent,
                 emptyText = "아직 검색 기록이 없어요.",
                 isFavorites = false,

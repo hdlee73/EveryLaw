@@ -131,6 +131,30 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
             }
 
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("분할 화면", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "위임 구조를 왼쪽 목록·오른쪽 본문으로 나눠 볼지 정해요.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    com.hdlee73.everylaw.data.SplitMode.entries.forEach { m ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable(role = Role.RadioButton) { vm.setSplitMode(m) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.RadioButton(selected = settings.splitMode == m, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.padding(vertical = 6.dp)) {
+                                Text(m.label, style = MaterialTheme.typography.bodyLarge)
+                                Text(m.desc, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     ListItem(
                         headlineContent = { Text("자동 업데이트 확인") },

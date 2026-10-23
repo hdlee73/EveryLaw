@@ -16,10 +16,18 @@ import kotlinx.coroutines.flow.stateIn
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+/** 분할 화면(좌우) 사용 방식 */
+enum class SplitMode(val label: String, val desc: String) {
+    Auto("자동", "화면이 넓을 때만 좌우로 나눠요"),
+    Always("항상 분할", "화면 크기와 상관없이 좌우로 나눠요"),
+    Never("분할 안 함", "항상 한 열(아코디언)로 보여요"),
+}
+
 data class AppSettings(
     /** 사용자가 직접 입력한 국가법령정보 OC. 비어 있으면 빌드에 주입된 값(BuiltInKey)을 쓴다. */
     val userOc: String = "",
     val autoUpdate: Boolean = true,
+    val splitMode: SplitMode = SplitMode.Auto,
     val lastUpdateCheck: Long = 0L,
     val recent: List<String> = emptyList(),
     val favorites: List<String> = emptyList(),
@@ -35,6 +43,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
     private object Keys {
         val oc = stringPreferencesKey("law_oc")
         val autoUpdate = booleanPreferencesKey("auto_update")
+        val splitMode = stringPreferencesKey("split_mode")
         val lastCheck = longPreferencesKey("last_update_check")
         val recent = stringPreferencesKey("recent")
         val favorites = stringPreferencesKey("favorites")
@@ -45,6 +54,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
         AppSettings(
             userOc = p[Keys.oc].orEmpty(),
             autoUpdate = p[Keys.autoUpdate] ?: true,
+            splitMode = SplitMode.entries.firstOrNull { it.name == p[Keys.splitMode] } ?: SplitMode.Auto,
             lastUpdateCheck = p[Keys.lastCheck] ?: 0L,
             recent = p[Keys.recent].toList(),
             favorites = p[Keys.favorites].toList(),
@@ -55,6 +65,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
 
     suspend fun setOc(value: String) = context.dataStore.edit { it[Keys.oc] = value.trim() }
     suspend fun setAutoUpdate(value: Boolean) = context.dataStore.edit { it[Keys.autoUpdate] = value }
+    suspend fun setSplitMode(value: SplitMode) = context.dataStore.edit { it[Keys.splitMode] = value.name }
     suspend fun markOcGuideSeen() = context.dataStore.edit { it[Keys.ocGuideSeen] = true }
     suspend fun markUpdateChecked(at: Long) = context.dataStore.edit { it[Keys.lastCheck] = at }
 

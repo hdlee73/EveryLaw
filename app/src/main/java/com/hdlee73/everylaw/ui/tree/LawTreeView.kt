@@ -18,7 +18,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -120,9 +124,9 @@ private fun AccordionTreeView(
     ) {
         item(key = "header") { Column { header() } }
         item(key = "article") {
-            ArticleCard(root) {
+            ArticleCard {
                 ArticleBody(root, state.expanded, onToggle) { nodes ->
-                    nodes.forEach { NodeSubtree(root, it, 0, state.expanded, onToggle) }
+                    nodes.forEachIndexed { i, n -> StepNode(root, n, i == nodes.lastIndex, state.expanded, onToggle) }
                 }
             }
         }
@@ -130,25 +134,16 @@ private fun AccordionTreeView(
     }
 }
 
-/** 법률 조문 카드. 제목은 위에, 본문(항·호·목)과 그 아래 위임 규정은 [content]가 그린다. */
+/** 법률 조문 카드(흰 카드). 제목은 위의 남색 머리 카드에 있고, 여기에는 본문(항·호·목)과 그 아래 위임 규정이 들어간다. */
 @Composable
-private fun ArticleCard(root: LawNode, content: @Composable () -> Unit) {
-    val tone = LevelColors.current[root.level]
+private fun ArticleCard(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = tone.container, contentColor = tone.onContainer),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LevelBadge(root.level)
-                Column(Modifier.weight(1f)) {
-                    Text(root.article.heading.ifBlank { root.sourceName }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(root.sourceName, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-            content()
-        }
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
     }
 }
 
@@ -220,14 +215,14 @@ private fun DelegationGroup(
         Surface(
             onClick = onToggle,
             shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.fillMaxWidth().semantics { stateDescription = if (expanded) "펼침" else "접힘" },
         ) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text(summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(summary, style = MaterialTheme.typography.labelSmall)
                 }
                 Icon(Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.rotate(rotation))
             }
@@ -236,76 +231,61 @@ private fun DelegationGroup(
     }
 }
 
-/** 노드 카드와, 펼쳐져 있으면 그 아래 하위 노드들을 재귀로 그린다. */
+/** 위임 단계 번호(법률 1 · 시행령 2 · 시행규칙 3 · 감독규정 4 · 시행세칙 5)를 담은 동그라미 */
 @Composable
-private fun NodeSubtree(root: LawNode, node: LawNode, depth: Int, expanded: Set<String>, onToggle: (String) -> Unit) {
-    AccordionNodeCard(
-        node = node,
-        ctx = citationContext(root, node),
-        depth = depth,
-        expanded = node.id in expanded,
-        onToggle = { onToggle(node.id) },
-    )
-    if (node.id in expanded) node.children.forEach { NodeSubtree(root, it, depth + 1, expanded, onToggle) }
+fun StepDot(level: LawLevel, size: androidx.compose.ui.unit.Dp = 24.dp) {
+    val tone = LevelColors.current[level]
+    Box(Modifier.size(size).clip(CircleShape).background(tone.accent), contentAlignment = Alignment.Center) {
+        Text("${level.ordinal + 1}", color = tone.onAccent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+    }
 }
 
+/**
+ * 하위 규정 한 건을 번호 붙은 단계로 그린다. 왼쪽에 단계 번호와 이어지는 세로선, 오른쪽에 제목·본문.
+ * 펼치면 본문과 그 아래 단계들이 이어진다.
+ */
 @Composable
-private fun AccordionNodeCard(
-    node: LawNode,
-    ctx: com.hdlee73.everylaw.core.parser.CitationLinker.Context,
-    depth: Int,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun StepNode(root: LawNode, node: LawNode, isLast: Boolean, expanded: Set<String>, onToggle: (String) -> Unit) {
     val tone = LevelColors.current[node.level]
-    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = (depth * 16).dp)
-            .animateContentSize(),
-        shape = if (depth == 0) MaterialTheme.shapes.large else MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = tone.container, contentColor = tone.onContainer),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(role = Role.Button, onClick = onToggle)
-                .semantics { stateDescription = if (expanded) "펼침" else "접힘" }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            LevelBadge(node.level)
-            Column(Modifier.weight(1f)) {
+    val open = node.id in expanded
+    val rotation by animateFloatAsState(if (open) 180f else 0f, label = "step-chevron")
+    val labelColor = if (node.level == LawLevel.SUPERVISORY_REGULATION) tone.onContainer else tone.accent
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            StepDot(node.level)
+            Box(
+                Modifier.width(2.dp).weight(1f)
+                    .background(if (isLast) Color.Transparent else MaterialTheme.colorScheme.outlineVariant),
+            )
+        }
+        Column(Modifier.weight(1f).padding(bottom = 14.dp).animateContentSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 24.dp)
+                    .clickable(role = Role.Button) { onToggle(node.id) }
+                    .semantics { stateDescription = if (open) "펼침" else "접힘" },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(node.level.label, style = MaterialTheme.typography.labelMedium, color = labelColor)
                 Text(
                     node.article.heading.ifBlank { node.sourceName },
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    modifier = Modifier.weight(1f),
+                    maxLines = if (open) 3 else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    node.sourceName,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (node.children.isNotEmpty()) {
+                    Text("하위 ${node.descendantCount}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.size(20.dp).rotate(rotation))
             }
-            if (node.children.isNotEmpty()) {
-                Text("${node.descendantCount}", style = MaterialTheme.typography.labelMedium)
+            Text(node.sourceName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (open) {
+                CitationText(node.article.body, citationContext(root, node), style = LawBodyStyle, selectable = true)
+                Column(Modifier.padding(top = 8.dp)) {
+                    node.children.forEachIndexed { i, c -> StepNode(root, c, i == node.children.lastIndex, expanded, onToggle) }
+                }
             }
-            Icon(Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.rotate(rotation))
-        }
-        AnimatedVisibility(expanded) {
-            CitationText(
-                node.article.body,
-                ctx,
-                style = LawBodyStyle,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                selectable = true,
-            )
         }
     }
 }
@@ -331,7 +311,7 @@ private fun SplitTreeView(
             item(key = "header") { Column { header() } }
             item(key = "article") {
                 val root = state.tree.root
-                ArticleCard(root) {
+                ArticleCard {
                     ArticleBody(root, state.expanded, onToggle) { nodes ->
                         nodes.forEach { n -> SplitNodeTree(n, 0, state.selectedId, onSelect) }
                     }
@@ -399,30 +379,29 @@ private fun SplitTreeRow(node: LawNode, depth: Int, selected: Boolean, onClick: 
         shape = MaterialTheme.shapes.medium,
         color = tone.container,
         contentColor = tone.onContainer,
-        border = if (selected) BorderStroke(3.dp, tone.accent) else null,
+        border = if (selected) BorderStroke(2.dp, tone.accent) else null,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = (depth * 14).dp)
             .semantics { if (selected) stateDescription = "선택됨" },
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LevelBadge(node.level)
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StepDot(node.level)
+            Column(Modifier.weight(1f)) {
                 Text(
                     node.article.heading.ifBlank { node.sourceName },
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${node.level.label} · ${node.sourceName}",
+                    style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                node.sourceName,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp),
-            )
         }
     }
 }
@@ -481,7 +460,7 @@ fun LevelBadge(level: LawLevel, large: Boolean = false) {
     val tone = LevelColors.current[level]
     Box(
         Modifier
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(6.dp))
             .background(tone.accent)
             .padding(horizontal = if (large) 12.dp else 10.dp, vertical = if (large) 4.dp else 3.dp)
             .semantics { contentDescription = level.label },

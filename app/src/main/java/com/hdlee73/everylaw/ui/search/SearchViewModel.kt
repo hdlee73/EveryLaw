@@ -161,7 +161,8 @@ class SearchViewModel(
     }
 
     fun expandAll(expand: Boolean) = updateTree { s ->
-        s.copy(expanded = if (expand) s.tree.root.flatten().map { it.id }.toSet() else setOf(s.tree.root.id))
+        val groups = com.hdlee73.everylaw.core.domain.ItemAttachment.attach(s.tree.root.article, s.tree.root.children).keys.map { "grp:" + it.key }
+        s.copy(expanded = if (expand) (s.tree.root.flatten().map { it.id } + groups).toSet() else setOf(s.tree.root.id))
     }
 
     fun select(nodeId: String) = updateTree { it.copy(selectedId = nodeId) }

@@ -207,7 +207,7 @@ private fun TreeHeader(
         Text(tree.law.abbreviation ?: tree.law.name, style = MaterialTheme.typography.headlineSmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "${tree.query.article.display} 위임 구조",
+                "${tree.query.target} 위임 구조",
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),

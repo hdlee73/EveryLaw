@@ -196,3 +196,88 @@ class CitationLinkerTest {
         assertTrue(DelegationTreeBuilder.refersTo("법 제420조제1항", DelegationTreeBuilder.LAW_PREFIX, no))
     }
 }
+
+class ArticleItemsTest {
+    private val sample = """제420조(금융투자업자에 대한 조치) ① 금융위원회는 다음 각 호의 어느 하나에 해당하는 경우 취소할 수 있다.
+1. 거짓으로 인가를 받은 경우
+2. 대통령령으로 정하는 경우
+가. 갑 사유
+나. 을 사유
+② 금융투자업자는 이를 이행하여야 한다.
+이어지는 설명
+③ 기타 사항은 대통령령으로 정한다."""
+
+    @Test fun splitsParagraphsSubparagraphsAndItems() {
+        val p = com.hdlee73.everylaw.core.parser.ArticleItems.parse(sample)
+        assertEquals("제420조(금융투자업자에 대한 조치)", p.header)
+        assertEquals(3, p.items.size)
+        val first = p.items[0]
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(paragraph = 1), first.path)
+        assertEquals(2, first.children.size)
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(1, "2", "나"), first.children[1].children[1].path)
+        assertTrue(p.items[1].text.contains("이어지는 설명"))
+    }
+
+    @Test fun lawBodyDoesNotRepeatNumbers() {
+        val xml = """<법령><기본정보><법령명_한글>테스트법</법령명_한글></기본정보><조문>
+            <조문단위><조문번호>9</조문번호><조문여부>조문</조문여부><조문제목>정의</조문제목><조문내용>제9조(정의)</조문내용>
+            <항><항번호>⑮</항번호><항내용>⑮ 이 법에서 다음과 같다.</항내용>
+              <호><호번호>1.</호번호><호내용>1. 상장법인</호내용></호></항></조문단위></조문></법령>"""
+        val a = DrfParsers.parseLawBody(xml).articles.single()
+        assertEquals(listOf("제9조(정의)", "⑮ 이 법에서 다음과 같다.", "1. 상장법인"), a.content.lines())
+        assertEquals(1, a.parsed.items.size)
+        assertEquals("⑮ 이 법에서 다음과 같다.\n  1. 상장법인", a.body)
+    }
+}
+
+class ItemQueryTest {
+    private fun ok(s: String) = (LawQueryParser.parse(s) as LawQueryParser.Result.Ok).query
+
+    @Test fun parsesParagraphSubparagraphAndItem() {
+        val q = ok("자본시장법 제86조 제2항 제3호 가목")
+        assertEquals("자본시장과 금융투자업에 관한 법률", q.lawName)
+        assertEquals(ArticleNo("86"), q.article)
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(2, "3", "가"), q.path)
+        assertEquals("제86조 제2항 제3호 가목", q.target)
+    }
+
+    @Test fun compactAndBranchForms() {
+        val q = ok("은행법 34조의2 1항 2호")
+        assertEquals("은행법", q.lawName)
+        assertEquals(ArticleNo("34", 2), q.article)
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(1, "2", null), q.path)
+        assertTrue(ok("자본시장법 제11조").path.isEmpty)
+    }
+}
+
+class AnchorTest {
+    private val no = ArticleNo("420")
+    @Test fun anchorsToCitedItem() {
+        val a = DelegationTreeBuilder.anchorOf("법 제420조제1항제5호에 따라", DelegationTreeBuilder.LAW_PREFIX, no)
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(1, "5", null), a)
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(), DelegationTreeBuilder.anchorOf("법 제420조에 따라", DelegationTreeBuilder.LAW_PREFIX, no))
+        assertEquals(null, DelegationTreeBuilder.anchorOf("법 제4200조제1항", DelegationTreeBuilder.LAW_PREFIX, no))
+    }
+}
+
+class AttachmentTest {
+    private fun art(c: String) = com.hdlee73.everylaw.core.model.Article(ArticleNo("1"), "", c)
+    private fun node(id: String, anchor: com.hdlee73.everylaw.core.model.ItemPath?) =
+        com.hdlee73.everylaw.core.model.LawNode(id, LawLevel.DECREE, "령", art("x"), anchor = anchor)
+
+    @Test fun nodesLandUnderTheirItemOrNearestParent() {
+        val a = art("제1조(정의) ① 가나다\n1. 하나\n2. 둘\n② 라마바")
+        val map = com.hdlee73.everylaw.core.domain.ItemAttachment.attach(
+            a,
+            listOf(
+                node("a", com.hdlee73.everylaw.core.model.ItemPath(1, "2", null)),
+                node("b", com.hdlee73.everylaw.core.model.ItemPath(1, "9", null)),
+                node("c", com.hdlee73.everylaw.core.model.ItemPath(7, null, null)),
+                node("d", null),
+            ),
+        )
+        assertEquals(listOf("a"), map[com.hdlee73.everylaw.core.model.ItemPath(1, "2", null)]!!.map { it.id })
+        assertEquals(listOf("b"), map[com.hdlee73.everylaw.core.model.ItemPath(1, null, null)]!!.map { it.id })
+        assertEquals(listOf("c", "d"), map[com.hdlee73.everylaw.core.model.ItemPath()]!!.map { it.id })
+    }
+}

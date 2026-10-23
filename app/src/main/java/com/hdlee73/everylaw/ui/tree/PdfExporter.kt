@@ -12,7 +12,11 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.core.content.FileProvider
 import com.hdlee73.everylaw.BuildConfig
+import com.hdlee73.everylaw.core.domain.ItemAttachment
+import com.hdlee73.everylaw.core.model.ArticleItem
 import com.hdlee73.everylaw.core.model.DelegationTree
+import com.hdlee73.everylaw.core.model.ItemPath
+import com.hdlee73.everylaw.core.model.PdfExtras
 import com.hdlee73.everylaw.core.model.LawLevel
 import com.hdlee73.everylaw.core.model.LawNode
 import com.hdlee73.everylaw.core.model.formatYmd
@@ -28,6 +32,14 @@ import java.util.Locale
  * 검색 결과(조문·하위 규정 트리·판례)를 A4 PDF로 만든다.
  * 안드로이드 기본 글꼴(Noto Sans CJK)로 그리므로 한글이 깨지지 않는다.
  */
+/** PDF에 담을 범위. 법률 조문은 항상 들어가고, 나머지는 고른 것만 담는다. */
+data class PdfOptions(
+    val levels: Set<LawLevel> = LawLevel.entries.toSet(),
+    val precedentList: Boolean = true,
+    val precedentBodies: Boolean = false,
+    val relatedArticles: Boolean = false,
+)
+
 object PdfExporter {
 
     private const val PAGE_W = 595 // A4, 1/72 inch
@@ -43,18 +55,31 @@ object PdfExporter {
     )
 
     fun fileName(tree: DelegationTree): String {
-        val base = "${tree.law.abbreviation ?: tree.law.name}_${tree.query.article.display}"
+        val base = "${tree.law.abbreviation ?: tree.law.name}_${tree.query.target}"
         val asOf = tree.asOf?.let { "_${it}기준" }.orEmpty()
         return (base + asOf).replace(Regex("""[\\/:*?"<>|\s]"""), "_") + ".pdf"
     }
 
-    suspend fun write(tree: DelegationTree, out: OutputStream) = withContext(Dispatchers.IO) {
+    /** 고른 단계에 없는 노드는 빼고, 그 아래 노드는 한 단계 위로 올린다. */
+    private fun keepLevels(children: List<LawNode>, levels: Set<LawLevel>): List<LawNode> =
+        children.flatMap { c ->
+            val kept = keepLevels(c.children, levels)
+            if (c.level in levels) listOf(c.copy(children = kept)) else kept
+        }
+
+    suspend fun write(
+        tree: DelegationTree,
+        options: PdfOptions,
+        extras: PdfExtras,
+        out: OutputStream,
+    ) = withContext(Dispatchers.IO) {
         val doc = PdfDocument()
         val w = Writer(doc)
         val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA).format(Date())
+        val purple = 0xFF4F378B.toInt()
 
-        w.text("Everylaw 위임 법령 조회 결과", 18f, bold = true, color = 0xFF4F378B.toInt())
-        w.text("${tree.law.name} ${tree.query.article.display}", 14f, bold = true)
+        w.text("Everylaw 위임 법령 조회 결과", 18f, bold = true, color = purple)
+        w.text("${tree.law.name} ${tree.query.target}", 14f, bold = true)
         w.text(
             buildString {
                 append("기준: ")
@@ -64,27 +89,88 @@ object PdfExporter {
             },
             9f, color = Color.DKGRAY,
         )
+        val scope = (listOf("법률") + LawLevel.entries.filter { it != LawLevel.LAW && it in options.levels }.map { it.label } +
+            listOfNotNull(
+                if (options.precedentList) "판례 목록" else null,
+                if (options.precedentBodies) "판례 본문" else null,
+                if (options.relatedArticles) "인용 조문" else null,
+            )).joinToString(", ")
+        w.text("포함 범위: $scope", 9f, color = Color.DKGRAY)
         tree.warnings.forEach { w.text("※ $it", 8.5f, color = Color.GRAY) }
         w.gap(10f)
 
-        fun node(n: LawNode, depth: Int) {
+        fun nodeBlock(n: LawNode, depth: Int) {
             val indent = depth * 14f
             w.text("[${n.level.label}] ${n.sourceName}", 9f, bold = true, color = levelColor.getValue(n.level), indent = indent)
             w.text(n.article.heading, 11f, bold = true, indent = indent)
-            w.text(n.article.content, 9.5f, indent = indent, extraSpacing = 2f)
-            w.gap(8f)
-            n.children.forEach { node(it, depth + 1) }
+            w.text(n.article.body, 9.5f, indent = indent, extraSpacing = 2f)
+            w.gap(6f)
+            n.children.forEach { nodeBlock(it, depth + 1) }
         }
-        node(tree.root, 0)
 
-        w.gap(8f)
-        w.text("관련 판례 (${tree.precedents.size}건)", 13f, bold = true, color = 0xFF4F378B.toInt())
-        if (tree.precedents.isEmpty()) w.text("찾은 판례가 없습니다.", 9.5f, color = Color.GRAY)
-        tree.precedents.forEach { p ->
-            w.text("• ${p.caseName}", 10f, bold = true)
-            w.text(listOfNotNull(p.court, p.caseNumber, p.decisionDate?.let(::formatYmd)).joinToString(" · "), 9f, color = Color.DKGRAY, indent = 10f)
-            w.gap(3f)
+        // 법률 조문: 항·호·목 줄 바로 아래에 그 위치가 위임한 하위 규정을 둔다.
+        val root = tree.root
+        val children = keepLevels(root.children, options.levels)
+        val attached = ItemAttachment.attach(root.article, children)
+        w.text("[${root.level.label}] ${root.sourceName}", 9f, bold = true, color = levelColor.getValue(root.level))
+        w.text(root.article.heading, 11f, bold = true)
+        val parsed = root.article.parsed
+        if (parsed.lead.isNotBlank()) w.text(parsed.lead, 9.5f, extraSpacing = 2f)
+        fun item(i: ArticleItem, depth: Int) {
+            w.text(i.text, 9.5f, indent = depth * 14f, extraSpacing = 2f)
+            attached[i.path]?.let { nodes ->
+                w.text("▼ ${i.path.display} 하위 규정", 8.5f, bold = true, color = Color.DKGRAY, indent = depth * 14f + 8f)
+                nodes.forEach { nodeBlock(it, depth + 1) }
+            }
+            i.children.forEach { item(it, depth + 1) }
         }
+        if (parsed.items.isEmpty() && parsed.lead.isBlank()) w.text(root.article.content, 9.5f, extraSpacing = 2f)
+        parsed.items.forEach { item(it, 0) }
+        attached[ItemPath()]?.let { nodes ->
+            w.gap(4f)
+            w.text("▼ 조 전체에 연결된 하위 규정", 8.5f, bold = true, color = Color.DKGRAY, indent = 8f)
+            nodes.forEach { nodeBlock(it, 1) }
+        }
+
+        if (options.relatedArticles) {
+            w.gap(8f)
+            w.text("인용 조문 (${extras.relatedArticles.size}건)", 13f, bold = true, color = purple)
+            if (extras.relatedArticles.isEmpty()) w.text("본문이 인용한 같은 법의 다른 조문이 없거나 불러오지 못했습니다.", 9.5f, color = Color.GRAY)
+            extras.relatedArticles.forEach { a ->
+                w.text("${tree.law.name} ${a.heading}", 10.5f, bold = true)
+                w.text(a.body, 9.5f, indent = 10f, extraSpacing = 2f)
+                w.gap(6f)
+            }
+        }
+
+        if (options.precedentList) {
+            w.gap(8f)
+            w.text("관련 판례 (${tree.precedents.size}건)", 13f, bold = true, color = purple)
+            if (tree.precedents.isEmpty()) w.text("찾은 판례가 없습니다.", 9.5f, color = Color.GRAY)
+            tree.precedents.forEach { p ->
+                w.text("• ${p.caseName}", 10f, bold = true)
+                w.text(listOfNotNull(p.court, p.caseNumber, p.decisionDate?.let(::formatYmd)).joinToString(" · "), 9f, color = Color.DKGRAY, indent = 10f)
+                w.gap(3f)
+            }
+        }
+
+        if (options.precedentBodies) {
+            w.gap(8f)
+            w.text("판례 본문 (${extras.precedents.size}건)", 13f, bold = true, color = purple)
+            if (extras.precedents.isEmpty()) w.text("불러온 판례 본문이 없습니다.", 9.5f, color = Color.GRAY)
+            extras.precedents.forEach { d ->
+                w.text(d.summary.caseName, 10.5f, bold = true)
+                w.text(listOfNotNull(d.summary.court, d.summary.caseNumber, d.summary.decisionDate?.let(::formatYmd)).joinToString(" · "), 9f, color = Color.DKGRAY, indent = 10f)
+                listOf("판시사항" to d.holdings, "판결요지" to d.gist, "참조조문" to d.referencedArticles, "참조판례" to d.referencedCases).forEach { (title, body) ->
+                    if (body.isNotBlank()) {
+                        w.text("[$title]", 9f, bold = true, indent = 10f)
+                        w.text(body, 9f, indent = 10f, extraSpacing = 2f)
+                    }
+                }
+                w.gap(8f)
+            }
+        }
+
         w.gap(12f)
         w.text(
             "출처: 국가법령정보센터 공동활용 API (law.go.kr). 법적 판단의 근거로는 반드시 원문을 확인하세요.\n" +
@@ -97,10 +183,10 @@ object PdfExporter {
     }
 
     /** 공유 시트용: 캐시에 저장한 뒤 다른 앱으로 보낸다. */
-    suspend fun share(context: Context, tree: DelegationTree) {
+    suspend fun share(context: Context, tree: DelegationTree, options: PdfOptions, extras: PdfExtras) {
         val dir = File(context.cacheDir, "pdf").apply { mkdirs() }
         val file = File(dir, fileName(tree))
-        file.outputStream().use { write(tree, it) }
+        file.outputStream().use { write(tree, options, extras, it) }
         val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val send = Intent(Intent.ACTION_SEND)
             .setType("application/pdf")

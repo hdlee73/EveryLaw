@@ -42,6 +42,51 @@ data class ArticleNo(val main: String, val branch: Int? = null) {
     }
 }
 
+/**
+ * 조 아래 항(①)·호(1.)·목(가.)의 위치. 해당 단계가 없으면 null.
+ * [subparagraph]는 호 번호("3", "2의2"), [item]은 목 글자("가").
+ */
+data class ItemPath(val paragraph: Int? = null, val subparagraph: String? = null, val item: String? = null) {
+    val isEmpty: Boolean get() = paragraph == null && subparagraph == null && item == null
+
+    /** 같은 위치끼리 같은 키. 그룹·UI 상태 식별용 */
+    val key: String
+        get() = listOfNotNull(paragraph?.let { "h$it" }, subparagraph?.let { "o$it" }, item?.let { "m$it" }).joinToString("/")
+
+    /** "제2항 제3호 가목" */
+    val display: String
+        get() = listOfNotNull(paragraph?.let { "제${it}항" }, subparagraph?.let { "제${it}호" }, item?.let { "${it}목" }).joinToString(" ")
+
+    /** 이 위치가 [prefix] 아래(또는 같은 위치)인지 */
+    fun startsWith(prefix: ItemPath): Boolean =
+        (prefix.paragraph == null || prefix.paragraph == paragraph) &&
+            (prefix.subparagraph == null || prefix.subparagraph == subparagraph) &&
+            (prefix.item == null || prefix.item == item)
+
+    /** 한 단계 위. 더 올라갈 곳이 없으면 빈 위치 */
+    fun parent(): ItemPath = when {
+        item != null -> copy(item = null)
+        subparagraph != null -> copy(subparagraph = null)
+        else -> ItemPath()
+    }
+}
+
+/** 조문 안의 항·호·목 한 줄. [text]는 그 줄 자신의 글(번호 포함)이고, 하위 단계는 [children]. */
+data class ArticleItem(
+    val path: ItemPath,
+    val label: String,
+    val text: String,
+    val children: List<ArticleItem> = emptyList(),
+) {
+    fun flatten(): List<ArticleItem> = listOf(this) + children.flatMap { it.flatten() }
+}
+
+/** 조문 본문을 나눈 결과. [header]는 "제9조(정의)", [lead]는 항 앞의 본문. */
+data class ParsedArticle(val header: String, val lead: String, val items: List<ArticleItem>) {
+    fun find(path: ItemPath): ArticleItem? = items.flatMap { it.flatten() }.firstOrNull { it.path == path }
+    fun allPaths(): Set<ItemPath> = items.flatMap { it.flatten() }.map { it.path }.toSet()
+}
+
 /** 하나의 조문(또는 행정규칙 조항). */
 data class Article(
     val number: ArticleNo?,
@@ -50,6 +95,16 @@ data class Article(
 ) {
     val heading: String
         get() = listOfNotNull(number?.display, title.takeIf { it.isNotBlank() }).joinToString(" ")
+
+    /** 본문을 머리말·항·호·목으로 나눈 것(필요할 때 한 번만 계산) */
+    val parsed: ParsedArticle by lazy(LazyThreadSafetyMode.NONE) { com.hdlee73.everylaw.core.parser.ArticleItems.parse(content) }
+
+    /** 화면·PDF에 보여 줄 본문: 머리말("제9조(정의)")은 제목에 이미 있으므로 빼고, 항·호·목은 들여쓴다. */
+    val body: String by lazy(LazyThreadSafetyMode.NONE) {
+        com.hdlee73.everylaw.core.parser.ArticleItems.lines(parsed)
+            .joinToString("\n") { (t, depth) -> "  ".repeat(depth) + t }
+            .ifBlank { content }
+    }
 }
 
 /**
@@ -65,6 +120,8 @@ data class LawNode(
     val article: Article,
     val issuer: String? = null,
     val children: List<LawNode> = emptyList(),
+    /** 법률 조문 바로 아래 노드일 때, 그 노드가 위임을 받는 법률 조문의 항·호·목 위치(조 전체면 빈 위치) */
+    val anchor: ItemPath? = null,
 ) {
     /** 자신을 포함한 모든 하위 노드를 깊이 우선으로 펼친 목록. */
     fun flatten(): List<LawNode> = listOf(this) + children.flatMap { it.flatten() }
@@ -90,7 +147,12 @@ data class LawQuery(
     val raw: String,
     val lawName: String,
     val article: ArticleNo,
-)
+    /** 항·호·목까지 지정했을 때의 위치(없으면 빈 위치 = 조 전체) */
+    val path: ItemPath = ItemPath(),
+) {
+    /** "제86조 제2항 제3호 가목" */
+    val target: String get() = (article.display + " " + path.display).trim()
+}
 
 /** 법령 검색 결과 한 건 (lawSearch.do target=law). */
 data class LawSummary(
@@ -199,3 +261,9 @@ data class LawVersion(
 fun formatYmd(ymd: String?): String =
     if (ymd != null && ymd.length == 8 && ymd.all(Char::isDigit)) "${ymd.substring(0, 4)}.${ymd.substring(4, 6)}.${ymd.substring(6)}"
     else ymd.orEmpty()
+
+/** PDF에 덧붙이려고 따로 내려받은 자료: 판례 본문과, 본문이 인용한 같은 법의 다른 조문. */
+data class PdfExtras(
+    val precedents: List<PrecedentDetail> = emptyList(),
+    val relatedArticles: List<Article> = emptyList(),
+)

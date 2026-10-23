@@ -1,6 +1,7 @@
 package com.hdlee73.everylaw.core.parser
 
 import com.hdlee73.everylaw.core.model.ArticleNo
+import com.hdlee73.everylaw.core.model.ItemPath
 import com.hdlee73.everylaw.core.model.LawQuery
 
 /**
@@ -10,6 +11,10 @@ import com.hdlee73.everylaw.core.model.LawQuery
 object LawQueryParser {
 
     private val ARTICLE = Regex("""(?:제\s*)?(\d+)\s*조(?:\s*의\s*(\d+))?|§\s*(\d+)(?:\s*의\s*(\d+))?""")
+
+    private val PARAGRAPH = Regex("""\s*(?:제\s*)?(\d+)\s*항""")
+    private val SUBPARAGRAPH = Regex("""\s*(?:제\s*)?(\d+(?:\s*의\s*\d+)?)\s*호""")
+    private val ITEM = Regex("""\s*([가-힣])\s*목""")
 
     sealed interface Result {
         data class Ok(val query: LawQuery) : Result
@@ -26,7 +31,16 @@ object LawQueryParser {
         val main = match.groupValues[1].ifEmpty { match.groupValues[3] }
         val branch = (match.groupValues[2].ifEmpty { match.groupValues[4] }).toIntOrNull()
 
-        val name = raw.removeRange(match.range)
+        // 조 뒤에 이어지는 "제2항 제3호 가목"을 읽는다. 읽은 만큼은 법령명에서 뺀다.
+        var pos = match.range.last + 1
+        var paragraph: Int? = null
+        var sub: String? = null
+        var item: String? = null
+        PARAGRAPH.matchAt(raw, pos)?.let { paragraph = it.groupValues[1].toInt(); pos = it.range.last + 1 }
+        SUBPARAGRAPH.matchAt(raw, pos)?.let { sub = it.groupValues[1].replace(Regex("""\s+"""), ""); pos = it.range.last + 1 }
+        ITEM.matchAt(raw, pos)?.let { item = it.groupValues[1]; pos = it.range.last + 1 }
+
+        val name = (raw.substring(0, match.range.first) + " " + raw.substring(pos))
             .replace(Regex("""\s+"""), " ")
             .trim()
             .trimEnd(',', '.', '·')
@@ -38,6 +52,7 @@ object LawQueryParser {
                 raw = raw,
                 lawName = LawAliases.resolve(name),
                 article = ArticleNo.of(main, branch),
+                path = ItemPath(paragraph, sub, item),
             )
         )
     }

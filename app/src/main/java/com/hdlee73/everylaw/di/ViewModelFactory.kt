@@ -9,7 +9,7 @@ import com.hdlee73.everylaw.ui.search.SearchViewModel
 import com.hdlee73.everylaw.ui.settings.SettingsViewModel
 
 fun AppContainer.viewModelFactory(): ViewModelProvider.Factory = viewModelFactory {
-    initializer { SearchViewModel(getDelegationTree, searchKeyword, getLawVersions, settings) }
+    initializer { SearchViewModel(getDelegationTree, searchKeyword, getLawVersions, buildPdfExtras, settings) }
     initializer { PrecedentViewModel(getPrecedent) }
     initializer { DocumentViewModel(getLawArticles, getAdminRule) }
     initializer { SettingsViewModel(settings, updateManager) }

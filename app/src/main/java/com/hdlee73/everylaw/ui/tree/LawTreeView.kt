@@ -60,7 +60,10 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hdlee73.everylaw.core.domain.ItemAttachment
+import com.hdlee73.everylaw.core.model.ArticleItem
 import com.hdlee73.everylaw.core.model.DelegationTree
+import com.hdlee73.everylaw.core.model.ItemPath
 import com.hdlee73.everylaw.core.model.LawLevel
 import com.hdlee73.everylaw.core.model.LawNode
 import com.hdlee73.everylaw.core.model.PrecedentSummary
@@ -83,7 +86,7 @@ fun LawTreeView(
     onOpenPrecedent: (PrecedentSummary) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (isWide) SplitTreeView(state, header, onSelect, onOpenPrecedent, modifier)
+    if (isWide) SplitTreeView(state, header, onToggle, onSelect, onOpenPrecedent, modifier)
     else AccordionTreeView(state, header, onToggle, onOpenPrecedent, modifier)
 }
 
@@ -109,25 +112,141 @@ private fun AccordionTreeView(
     onOpenPrecedent: (PrecedentSummary) -> Unit,
     modifier: Modifier,
 ) {
-    val nodes = visibleNodes(state.tree.root, state.expanded)
+    val root = state.tree.root
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "header") { Column { header() } }
-        items(nodes, key = { it.node.id }) { v ->
-            AccordionNodeCard(
-                node = v.node,
-                ctx = citationContext(state.tree.root, v.node),
-                depth = v.depth,
-                expanded = v.node.id in state.expanded,
-                onToggle = { onToggle(v.node.id) },
-                modifier = Modifier.animateItem(),
-            )
+        item(key = "article") {
+            ArticleCard(root) {
+                ArticleBody(root, state.expanded, onToggle) { nodes ->
+                    nodes.forEach { NodeSubtree(root, it, 0, state.expanded, onToggle) }
+                }
+            }
         }
         precedentItems(state.tree, onOpenPrecedent)
     }
+}
+
+/** 법률 조문 카드. 제목은 위에, 본문(항·호·목)과 그 아래 위임 규정은 [content]가 그린다. */
+@Composable
+private fun ArticleCard(root: LawNode, content: @Composable () -> Unit) {
+    val tone = LevelColors.current[root.level]
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = tone.container, contentColor = tone.onContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LevelBadge(root.level)
+                Column(Modifier.weight(1f)) {
+                    Text(root.article.heading.ifBlank { root.sourceName }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(root.sourceName, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            content()
+        }
+    }
+}
+
+private fun groupId(path: ItemPath) = "grp:" + path.key
+
+/**
+ * 조문 본문을 항·호·목 단위로 그리고, 각 위치를 위임 근거로 삼는 하위 규정을 그 줄 바로 아래에 접이식 묶음으로 보여 준다.
+ * 위치를 알 수 없는 하위 규정은 맨 아래 "조 전체"에 둔다.
+ */
+@Composable
+private fun ArticleBody(
+    root: LawNode,
+    expanded: Set<String>,
+    onToggle: (String) -> Unit,
+    renderNodes: @Composable (List<LawNode>) -> Unit,
+) {
+    val ctx = citationContext(root, root)
+    val parsed = root.article.parsed
+    val attached = remember(root) { ItemAttachment.attach(root.article, root.children) }
+
+    @Composable
+    fun Group(path: ItemPath, depth: Int) {
+        val nodes = attached[path] ?: return
+        DelegationGroup(
+            nodes = nodes,
+            title = if (path.isEmpty) "조 전체에 연결된 하위 규정" else "${path.display} 하위 규정",
+            expanded = groupId(path) in expanded,
+            onToggle = { onToggle(groupId(path)) },
+            depth = depth,
+            content = { renderNodes(nodes) },
+        )
+    }
+
+    @Composable
+    fun Item(item: ArticleItem, depth: Int) {
+        CitationText(
+            item.text, ctx, style = LawBodyStyle,
+            modifier = Modifier.padding(start = (depth * 14).dp), selectable = true,
+        )
+        Group(item.path, depth)
+        item.children.forEach { Item(it, depth + 1) }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (parsed.lead.isNotBlank()) CitationText(parsed.lead, ctx, style = LawBodyStyle, selectable = true)
+        if (parsed.items.isEmpty() && parsed.lead.isBlank()) CitationText(root.article.content, ctx, style = LawBodyStyle, selectable = true)
+        parsed.items.forEach { Item(it, 0) }
+        Group(ItemPath(), 0)
+    }
+}
+
+/** 접었다 펴는 하위 규정 묶음. 접은 상태에서는 몇 건이 어느 단계에 있는지 한 줄로 알려 준다. */
+@Composable
+private fun DelegationGroup(
+    nodes: List<LawNode>,
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    depth: Int,
+    content: @Composable () -> Unit,
+) {
+    val counts = nodes.flatMap { it.flatten() }.groupingBy { it.level }.eachCount().toSortedMap()
+    val summary = counts.entries.joinToString(" · ") { "${it.key.label} ${it.value}건" }
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "group-chevron")
+    Column(
+        Modifier.padding(start = (depth * 14).dp).animateContentSize(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Surface(
+            onClick = onToggle,
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth().semantics { stateDescription = if (expanded) "펼침" else "접힘" },
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.rotate(rotation))
+            }
+        }
+        if (expanded) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+    }
+}
+
+/** 노드 카드와, 펼쳐져 있으면 그 아래 하위 노드들을 재귀로 그린다. */
+@Composable
+private fun NodeSubtree(root: LawNode, node: LawNode, depth: Int, expanded: Set<String>, onToggle: (String) -> Unit) {
+    AccordionNodeCard(
+        node = node,
+        ctx = citationContext(root, node),
+        depth = depth,
+        expanded = node.id in expanded,
+        onToggle = { onToggle(node.id) },
+    )
+    if (node.id in expanded) node.children.forEach { NodeSubtree(root, it, depth + 1, expanded, onToggle) }
 }
 
 @Composable
@@ -181,7 +300,7 @@ private fun AccordionNodeCard(
         }
         AnimatedVisibility(expanded) {
             CitationText(
-                node.article.content,
+                node.article.body,
                 ctx,
                 style = LawBodyStyle,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
@@ -197,12 +316,11 @@ private fun AccordionNodeCard(
 private fun SplitTreeView(
     state: SearchUiState.TreeSuccess,
     header: @Composable ColumnScope.() -> Unit,
+    onToggle: (String) -> Unit,
     onSelect: (String) -> Unit,
     onOpenPrecedent: (PrecedentSummary) -> Unit,
     modifier: Modifier,
 ) {
-    val all = state.tree.root.flatten()
-    val depthOf = remember(state.tree) { depthMap(state.tree.root) }
     Row(modifier.fillMaxSize().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // 왼쪽: 상위 조문 + 위임 트리
         LazyColumn(
@@ -211,13 +329,13 @@ private fun SplitTreeView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "header") { Column { header() } }
-            items(all, key = { it.id }) { node ->
-                SplitTreeRow(
-                    node = node,
-                    depth = depthOf[node.id] ?: 0,
-                    selected = node.id == state.selectedId,
-                    onClick = { onSelect(node.id) },
-                )
+            item(key = "article") {
+                val root = state.tree.root
+                ArticleCard(root) {
+                    ArticleBody(root, state.expanded, onToggle) { nodes ->
+                        nodes.forEach { n -> SplitNodeTree(n, 0, state.selectedId, onSelect) }
+                    }
+                }
             }
             item(key = "prec-entry") {
                 val selected = state.selectedId == SearchUiState.PRECEDENTS_PANE
@@ -266,6 +384,13 @@ private fun depthMap(root: LawNode): Map<String, Int> {
     return m
 }
 
+/** 분할 화면 왼쪽: 위임 규정을 선택 가능한 줄로, 하위 규정까지 이어서 그린다. */
+@Composable
+private fun SplitNodeTree(node: LawNode, depth: Int, selectedId: String, onSelect: (String) -> Unit) {
+    SplitTreeRow(node, depth, node.id == selectedId) { onSelect(node.id) }
+    node.children.forEach { SplitNodeTree(it, depth + 1, selectedId, onSelect) }
+}
+
 @Composable
 private fun SplitTreeRow(node: LawNode, depth: Int, selected: Boolean, onClick: () -> Unit) {
     val tone = LevelColors.current[node.level]
@@ -291,15 +416,13 @@ private fun SplitTreeRow(node: LawNode, depth: Int, selected: Boolean, onClick: 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (depth == 0) {
-                Text(
-                    node.article.content,
-                    style = LawBodyStyle,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+            Text(
+                node.sourceName,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
@@ -327,7 +450,7 @@ private fun NodeDetail(tree: DelegationTree, node: LawNode, onSelect: (String) -
         }
         Text(node.sourceName, style = MaterialTheme.typography.titleMedium)
         Text(node.article.heading, style = MaterialTheme.typography.headlineSmall)
-        CitationText(node.article.content, citationContext(tree.root, node), style = LawBodyStyle, selectable = true)
+        CitationText(node.article.body, citationContext(tree.root, node), style = LawBodyStyle, selectable = true)
 
         if (node.children.isNotEmpty()) {
             HorizontalDivider()

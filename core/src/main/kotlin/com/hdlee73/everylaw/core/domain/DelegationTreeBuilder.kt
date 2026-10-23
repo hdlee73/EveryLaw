@@ -3,6 +3,7 @@ package com.hdlee73.everylaw.core.domain
 import com.hdlee73.everylaw.core.model.AdminRuleDocument
 import com.hdlee73.everylaw.core.model.Article
 import com.hdlee73.everylaw.core.model.ArticleNo
+import com.hdlee73.everylaw.core.model.ItemPath
 import com.hdlee73.everylaw.core.model.LawLevel
 import com.hdlee73.everylaw.core.model.LawNode
 
@@ -39,12 +40,14 @@ class DelegationTreeBuilder(
         }
         val root = MutableNode("law", LawLevel.LAW, input.lawName, input.lawArticle, null)
         root.children += decreeNodes
+        decreeNodes.forEach { d -> d.anchor = lawNo?.let { anchorOf(d.article.content, LAW_PREFIX, it) } ?: ItemPath() }
 
         ruleNodes.forEach { rule ->
             val parent = decreeNodes.firstOrNull { d -> d.article.number?.let { refersTo(rule.article.content, DECREE_PREFIX, it) } == true }
                 ?: decreeNodes.firstOrNull()
                 ?: root
             parent.children += rule
+            if (parent === root) rule.anchor = lawNo?.let { anchorOf(rule.article.content, LAW_PREFIX, it) } ?: ItemPath()
         }
 
         val supNodes = mutableListOf<MutableNode>()
@@ -57,6 +60,7 @@ class DelegationTreeBuilder(
                 if (parent.children.size >= maxPerParent) return@forEachIndexed
                 val node = MutableNode("sup-$di-$ai", LawLevel.SUPERVISORY_REGULATION, doc.name, art, doc.agency)
                 parent.children += node
+                if (parent === root) node.anchor = lawNo?.let { anchorOf(art.content, LAW_PREFIX, it) } ?: ItemPath()
                 supNodes += node
             }
         }
@@ -81,7 +85,8 @@ class DelegationTreeBuilder(
         val issuer: String?,
         val children: MutableList<MutableNode> = mutableListOf(),
     ) {
-        fun freeze(): LawNode = LawNode(id, level, source, article, issuer, children.map { it.freeze() })
+        var anchor: ItemPath? = null
+        fun freeze(): LawNode = LawNode(id, level, source, article, issuer, children.map { it.freeze() }, anchor)
     }
 
     companion object {
@@ -90,6 +95,25 @@ class DelegationTreeBuilder(
         const val DECREE_PREFIX = """(?:(?<![가-힣])영|시행령)"""
         const val RULE_PREFIX = """(?:(?<![가-힣])규칙|시행규칙)"""
         const val SUPERVISORY_PREFIX = """(?:(?<![가-힣])규정|감독규정)"""
+
+        /**
+         * [text]가 "[prefix] 제N조(의M)" 뒤에 "제K항 제J호 X목"을 붙여 인용했다면 그 위치.
+         * 조만 인용했으면 빈 위치, 인용이 없으면 null. 여러 번 인용했으면 처음 것.
+         */
+        fun anchorOf(text: String, prefix: String, no: ArticleNo): ItemPath? {
+            val main = Regex.escape(no.main)
+            val branch = no.branch?.let { """\s*의\s*$it""" } ?: """(?!\s*의\s*\d)"""
+            val pattern = Regex(
+                """$prefix\s*제\s*$main\s*조$branch(?![\d-])""" +
+                    """(?:\s*제\s*(\d+)\s*항)?(?:\s*제\s*(\d+(?:\s*의\s*\d+)?)\s*호)?(?:\s*([가-힣])\s*목)?"""
+            )
+            val m = pattern.find(text) ?: return null
+            return ItemPath(
+                paragraph = m.groupValues[1].toIntOrNull(),
+                subparagraph = m.groupValues[2].takeIf { it.isNotEmpty() }?.replace(Regex("""\s+"""), ""),
+                item = m.groupValues[3].takeIf { it.isNotEmpty() },
+            )
+        }
 
         /** [text]가 "[prefix] 제N조(의M)" 를 참조하는지. 제12조가 제120조·제12조의2와 섞이지 않게 경계를 본다. */
         fun refersTo(text: String, prefix: String, no: ArticleNo): Boolean {

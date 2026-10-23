@@ -1,10 +1,16 @@
 name: Release
 
-# v1.2.3 형식 태그를 올리면 서명된 APK를 만들어 GitHub Release에 올린다.
+# v1.2.3 형식 태그를 올리거나, Actions 탭에서 버전을 입력해 직접 실행하면
+# 서명된 APK를 만들어 GitHub Release에 올린다(직접 실행 시 태그도 만들어 준다).
 # 앱의 자동 업데이트는 이 저장소의 최신 릴리스만 확인한다.
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '릴리스 버전 (예: 1.0.0)'
+        required: true
 
 permissions:
   contents: write
@@ -27,6 +33,7 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           LAW_OC: ${{ secrets.LAW_OC }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ -z "$LAW_OC" ]; then
             echo "::error::LAW_OC secret이 없습니다. 기본 인증키 없이 배포하면 앱이 데모 모드로 열립니다."
@@ -38,7 +45,16 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::버전 형식은 1.2.3 이어야 합니다: $VERSION"
+            exit 1
+          fi
+          echo "TAG=v$VERSION" >> "$GITHUB_ENV"
           IFS=. read -r MA MI PA <<< "$VERSION"
           echo "VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$((MA * 10000 + MI * 100 + PA))" >> "$GITHUB_ENV"
@@ -64,8 +80,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         # 웹에서 Release를 먼저 만들어 태그가 생긴 경우에도 APK만 붙도록 처리
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "Everylaw-${VERSION_NAME}.apk" --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "Everylaw-${VERSION_NAME}.apk" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "Everylaw-${VERSION_NAME}.apk" --title "Everylaw ${VERSION_NAME}" --generate-notes
+            # 직접 실행이면 태그가 없으므로 현재 커밋에 태그를 만들며 릴리스한다
+            gh release create "$TAG" "Everylaw-${VERSION_NAME}.apk" --target "$GITHUB_SHA" --title "Everylaw ${VERSION_NAME}" --generate-notes
           fi

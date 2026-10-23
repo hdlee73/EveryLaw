@@ -100,7 +100,7 @@ fun SearchScreen(
             onQueryChange = vm::onQueryChange,
             onSearch = { vm.submit() },
             onAsOfChange = vm::setAsOf,
-            modifier = Modifier.padding(horizontal = if (isWide) 0.dp else 14.dp, vertical = 12.dp),
+            showHeadline = state is SearchUiState.Idle,
         )
     }
 

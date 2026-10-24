@@ -41,6 +41,10 @@ import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -268,7 +272,7 @@ private fun TreeHeader(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            Modifier.fillMaxWidth().background(com.hdlee73.everylaw.ui.theme.Navy, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(start = 18.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
+            Modifier.fillMaxWidth().background(com.hdlee73.everylaw.ui.theme.Navy, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -300,8 +304,17 @@ private fun TreeHeader(
                 }
             }
         }
-        tree.warnings.forEach {
-            Text("※ $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (tree.warnings.isNotEmpty()) {
+            // 안내문은 한 줄로 접어 두고, 누르면 펼친다
+            var open by remember { mutableStateOf(false) }
+            Text(
+                tree.warnings.joinToString("\n") { "※ $it" },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (open) Int.MAX_VALUE else 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().clickable { open = !open },
+            )
         }
     }
 }
@@ -359,58 +372,71 @@ private fun TreeActions(
         )
     }
 
-    // 옆으로 밀지 않고도 모두 보이도록 줄바꿈한다. 글자는 짧게.
+    // 한 줄 아이콘 툴바: 자주 쓰는 PDF·공유·찾기만 두고 나머지는 더보기 메뉴로 보내 조문 영역을 넓힌다.
+    var showFilter by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-    FlowRow(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        AssistChip(
-            onClick = { chooseFor = false },
-            label = { Text("PDF 저장") },
-            leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
-        )
-        AssistChip(
-            onClick = { chooseFor = true },
-            label = { Text("공유") },
-            leadingIcon = { Icon(Icons.Outlined.Share, null) },
-        )
-        AssistChip(onClick = onVersions, label = { Text("시행 연혁") }, leadingIcon = { Icon(Icons.Outlined.History, null) })
-        if (!isWide) {
-            AssistChip(onClick = { onExpandAll(true) }, label = { Text("펼치기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldMore, null) })
-            AssistChip(onClick = { onExpandAll(false) }, label = { Text("접기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldLess, null) })
+    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { chooseFor = false }) { Icon(Icons.Outlined.PictureAsPdf, "PDF 저장") }
+        IconButton(onClick = { chooseFor = true }) { Icon(Icons.Outlined.Share, "공유") }
+        IconButton(onClick = { showFilter = !showFilter }) {
+            Icon(Icons.Outlined.Search, "결과 안에서 찾기", tint = if (showFilter || filter.isNotBlank()) MaterialTheme.colorScheme.primary else LocalContentColor.current)
         }
-        // 분할 화면 방식을 설정에 가지 않고 바로 바꾼다 (자동 → 항상 분할 → 분할 안 함 → 자동 …)
-        val modes = com.hdlee73.everylaw.data.SplitMode.entries
-        AssistChip(
-            onClick = { onSplitMode(modes[(splitMode.ordinal + 1) % modes.size]) },
-            label = { Text("화면: ${splitMode.label}") },
-            leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
-        )
-        AssistChip(
-            onClick = { onInline(!inline) },
-            label = { Text(if (inline) "하위법규: 바로 아래" else "하위법규: 묶음") },
-            leadingIcon = { Icon(Icons.Outlined.VerticalAlignBottom, null) },
-        )
-        AssistChip(
-            onClick = { onSelectMode(!selectMode) },
-            label = { Text(if (selectMode) "숨기기 끝" else "항목 숨기기") },
-            leadingIcon = { Icon(if (selectMode) Icons.Outlined.Check else Icons.Outlined.VisibilityOff, null) },
+        Spacer(Modifier.weight(1f))
+        if (selectMode) TextButton(onClick = { onSelectMode(false) }) { Text("숨기기 끝") }
+        Box {
+            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "더보기") }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("시행 연혁") },
+                    leadingIcon = { Icon(Icons.Outlined.History, null) },
+                    onClick = { menuOpen = false; onVersions() },
+                )
+                if (!isWide) {
+                    DropdownMenuItem(
+                        text = { Text("모두 펼치기") },
+                        leadingIcon = { Icon(Icons.Outlined.UnfoldMore, null) },
+                        onClick = { menuOpen = false; onExpandAll(true) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("모두 접기") },
+                        leadingIcon = { Icon(Icons.Outlined.UnfoldLess, null) },
+                        onClick = { menuOpen = false; onExpandAll(false) },
+                    )
+                }
+                // 분할 화면 방식을 설정에 가지 않고 바로 바꾼다 (자동 → 항상 분할 → 분할 안 함 → 자동 …)
+                val modes = com.hdlee73.everylaw.data.SplitMode.entries
+                DropdownMenuItem(
+                    text = { Text("화면: ${splitMode.label}") },
+                    leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
+                    onClick = { onSplitMode(modes[(splitMode.ordinal + 1) % modes.size]) },
+                )
+                DropdownMenuItem(
+                    text = { Text(if (inline) "하위법규: 바로 아래" else "하위법규: 묶음") },
+                    leadingIcon = { Icon(Icons.Outlined.VerticalAlignBottom, null) },
+                    onClick = { onInline(!inline) },
+                )
+                DropdownMenuItem(
+                    text = { Text(if (selectMode) "항목 숨기기 끝" else "항목 숨기기") },
+                    leadingIcon = { Icon(if (selectMode) Icons.Outlined.Check else Icons.Outlined.VisibilityOff, null) },
+                    onClick = { menuOpen = false; onSelectMode(!selectMode) },
+                )
+            }
+        }
+    }
+    if (showFilter || filter.isNotBlank()) {
+        OutlinedTextField(
+            value = filter,
+            onValueChange = onFilter,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium,
+            placeholder = { Text("결과 안에서 찾기 (키워드·제12조)") },
+            trailingIcon = {
+                IconButton(onClick = { onFilter(""); showFilter = false }) { Icon(Icons.Filled.Close, "찾기 닫기") }
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp),
         )
     }
-    OutlinedTextField(
-        value = filter,
-        onValueChange = onFilter,
-        singleLine = true,
-        textStyle = MaterialTheme.typography.bodyMedium,
-        placeholder = { Text("결과 안에서 찾기 (키워드·제12조)") },
-        leadingIcon = { Icon(Icons.Outlined.Search, null) },
-        trailingIcon = {
-            if (filter.isNotEmpty()) IconButton(onClick = { onFilter("") }) { Icon(Icons.Filled.Close, "찾기 지우기") }
-        },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp),
-    )
     val status = buildList {
         if (filter.isNotBlank()) add(if (matchCount > 0) "맞는 하위 규정 ${matchCount}개" else "맞는 하위 규정이 없어요")
         if (selectMode) add("숨길 항목을 체크하세요")

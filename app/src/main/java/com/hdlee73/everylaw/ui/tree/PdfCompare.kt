@@ -18,10 +18,10 @@ import com.hdlee73.everylaw.core.model.LawNode
 internal object PdfCompare {
     private const val PAD = 4f
 
-    fun draw(w: PdfExporter.Writer, root: LawNode, tiers: Int) {
-        val levels = CompareTable.levels(tiers)
-        val rows = CompareTable.build(root, tiers)
-        val size = if (levels.size == 3) 9f else 8f
+    fun draw(w: PdfExporter.Writer, root: LawNode, chosen: Set<LawLevel>) {
+        val levels = CompareTable.columns(chosen)
+        val rows = CompareTable.build(root, chosen)
+        val size = if (levels.size <= 3) 9f else 8.5f
         val colW = (w.pageW - PdfExporter.MARGIN * 2) / levels.size
         val textW = (colW - PAD * 2).toInt()
 

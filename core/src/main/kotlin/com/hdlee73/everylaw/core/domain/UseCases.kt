@@ -215,8 +215,8 @@ class GetDelegationTreeUseCase(
             }
             target.flatten().forEach { append(it.text).append('\n') }
         }.trim()
-        val kept = root.children.filter { c -> c.anchor?.startsWith(query.path) == true }
-        if (kept.isEmpty()) warnings += "${query.path.display}에 직접 연결된 하위 규정을 찾지 못했어요. 본문에 '대통령령으로 정하는' 등 위임 문구가 있어도 시행령이 그 위치를 인용하지 않으면 연결되지 않습니다."
+        val (kept, note) = selectForPath(root.withParagraphPieces().children, query.path)
+        note?.let { warnings += it }
         return root.copy(article = root.article.copy(content = body), children = kept)
     }
 

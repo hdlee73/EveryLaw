@@ -3,6 +3,7 @@ package com.hdlee73.everylaw.core
 import com.hdlee73.everylaw.core.domain.CompareTable
 import com.hdlee73.everylaw.core.domain.DelegationTreeBuilder
 import com.hdlee73.everylaw.core.domain.ItemAttachment
+import com.hdlee73.everylaw.core.domain.selectForPath
 import com.hdlee73.everylaw.core.domain.stableKey
 import com.hdlee73.everylaw.core.domain.withParagraphPieces
 import com.hdlee73.everylaw.core.model.Article
@@ -46,6 +47,18 @@ class InlineDelegationTest {
         val attached = ItemAttachment.attach(split.article, split.children)
         assertEquals(setOf(ItemPath.LEAD, ItemPath(subparagraph = "2")), attached.keys)
         assertNotEquals(split.children[0].stableKey, split.children[1].stableKey)
+    }
+
+    @Test fun itemQueryFindsDecreeParagraphAfterSplit() {
+        val (kept, note) = selectForPath(tree().withParagraphPieces().children, ItemPath(subparagraph = "2"))
+        assertEquals(listOf("제2항"), kept.map { it.part })
+        assertEquals(null, note)
+    }
+
+    @Test fun itemQueryWithoutDirectCitationFallsBackToWholeArticle() {
+        val (kept, note) = selectForPath(tree().withParagraphPieces().children, ItemPath(subparagraph = "1"))
+        assertEquals(2, kept.size)
+        assertTrue(note != null)
     }
 
     @Test fun singleLocationIsNotSplit() {

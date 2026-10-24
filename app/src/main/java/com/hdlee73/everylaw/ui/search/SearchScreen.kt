@@ -182,6 +182,7 @@ fun SearchScreen(
                         onLaw = onOpenLaw,
                         onAdminRule = onOpenAdminRule,
                         onPrecedent = onOpenPrecedent,
+                        onArticle = { hit -> vm.submit("${hit.law.name} ${hit.article.number?.display.orEmpty()}") },
                     )
                     is SearchUiState.TreeSuccess -> Unit
                 }
@@ -337,7 +338,7 @@ private fun IdleContent(
         Spacer(Modifier.height(4.dp))
         Text("법조문 하나로\n위임 규정을 한눈에", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "법률 → 시행령 → 시행규칙 → 감독규정 → 시행세칙을 거슬러 찾아 계층으로 보여드려요. 조문 번호 없이 입력하면 법령·행정규칙·판례 키워드 검색이 돼요.",
+            "법률 → 시행령 → 시행규칙 → 감독규정 → 시행세칙을 거슬러 찾아 계층으로 보여드려요. 조문 번호 없이 입력하면 법령·행정규칙·판례 키워드 검색이 돼요. 법령명을 앞에 붙여 '자본시장법 손실보전'처럼 입력하면 그 법 안에서 조문 제목·내용을 찾아요.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -375,7 +376,38 @@ private fun androidx.compose.foundation.lazy.LazyListScope.keywordResults(
     onLaw: (LawSummary) -> Unit,
     onAdminRule: (AdminRuleSummary) -> Unit,
     onPrecedent: (PrecedentSummary) -> Unit,
+    onArticle: (com.hdlee73.everylaw.core.model.ArticleHit) -> Unit,
 ) {
+    result.scopeLaw?.let { law ->
+        item {
+            Text(
+                "'${law.name}' 안에서 조문 제목·내용을 찾았어요.",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+            )
+        }
+    }
+    item { SectionTitle("조문 (제목·내용)", result.articleHits.size, Icons.AutoMirrored.Outlined.MenuBook) }
+    if (result.articleHits.isEmpty()) item {
+        Text(
+            if (result.scopeLaw != null) "조문 제목·내용에 '${result.keyword}'이(가) 들어 있는 조문이 없어요."
+            else "상위 법령에서 조문 제목·내용에 '${result.keyword}'이(가) 들어 있는 조문을 찾지 못했어요. 법령명을 앞에 붙이면(예: 자본시장법 ${result.keyword}) 그 법 안에서 찾아요.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+        )
+    }
+    items(result.articleHits, key = { "art-${it.law.mst}-${it.article.number}" }) { hit ->
+        ResultCard(
+            title = listOfNotNull(
+                hit.article.number?.display,
+                hit.article.title.trim().takeIf { it.isNotEmpty() }?.let { if (it.startsWith("(")) it else "($it)" },
+            ).joinToString("") + if (result.scopeLaw == null) " · ${hit.law.name}" else "",
+            subtitle = (if (hit.inTitle) "제목에 포함 · " else "내용에 포함 · ") + hit.snippet,
+            onClick = { onArticle(hit) },
+        )
+    }
     if (result.warnings.isNotEmpty()) item {
         Card(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
@@ -388,16 +420,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.keywordResults(
             }
         }
     }
-    item { SectionTitle("법령", result.laws.size, Icons.AutoMirrored.Outlined.MenuBook) }
-    items(result.laws, key = { "law-${it.mst}-${it.name}" }) { law ->
+    if (result.scopeLaw == null) item { SectionTitle("법령", result.laws.size, Icons.AutoMirrored.Outlined.MenuBook) }
+    if (result.scopeLaw == null) items(result.laws, key = { "law-${it.mst}-${it.name}" }) { law ->
         ResultCard(
             title = law.name,
             subtitle = listOfNotNull(law.kind, law.abbreviation, law.effectiveDate?.let { "시행 ${formatYmd(it)}" }).joinToString(" · "),
             onClick = { onLaw(law) },
         )
     }
-    item { SectionTitle("행정규칙 (감독규정·세칙 등)", result.adminRules.size, Icons.Outlined.Description) }
-    items(result.adminRules, key = { "adm-${it.serialNo}-${it.name}" }) { r ->
+    if (result.adminRules.isNotEmpty()) item { SectionTitle("행정규칙 (감독규정·세칙 등)", result.adminRules.size, Icons.Outlined.Description) }
+    if (result.adminRules.isNotEmpty()) items(result.adminRules, key = { "adm-${it.serialNo}-${it.name}" }) { r ->
         ResultCard(
             title = r.name,
             subtitle = listOfNotNull(r.kind, r.agency).joinToString(" · "),

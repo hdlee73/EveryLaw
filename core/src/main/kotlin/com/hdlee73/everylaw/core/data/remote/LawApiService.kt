@@ -87,7 +87,7 @@ interface LawApiService {
     suspend fun searchPrecedents(
         @Query("query") query: String,
         @Query("search") search: Int = 2,
-        @Query("display") display: Int = 20,
+        @Query("display") display: Int = 40,
         @Query("sort") sort: String = "ddes",
     ): String
 

@@ -92,6 +92,12 @@ object LawAliases {
         "금융소비자 보호에 관한 법률" to (listOf("금융소비자 보호에 관한 감독규정") to listOf("금융소비자 보호에 관한 감독규정 시행세칙")),
     )
 
+    /** 정식 명칭과 그 약칭들 (판례 본문에서 인용 이름을 알아볼 때 쓴다) */
+    fun namesFor(formal: String): List<String> =
+        listOf(formal) + aliases.filterValues { it == formal }.keys
+
+    fun isKnown(name: String): Boolean = aliases.containsKey(name) || aliases.containsKey(name.replace(" ", "")) || supervisory.containsKey(name)
+
     fun resolve(name: String): String {
         val compact = name.replace(" ", "")
         return aliases[name] ?: aliases[compact] ?: name

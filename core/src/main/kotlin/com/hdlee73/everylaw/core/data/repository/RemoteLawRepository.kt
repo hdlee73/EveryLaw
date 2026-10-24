@@ -27,6 +27,8 @@ class RemoteLawRepository(
 
     // 감독규정 본문은 수백 개 조문이라 같은 세션에서 다시 받지 않는다.
     private val adminRuleCache = ConcurrentHashMap<String, AdminRuleDocument>()
+    // 판례 관련도 판정에 본문을 여러 건 받으므로, 판례 화면·PDF에서 다시 받지 않게 둔다.
+    private val precedentCache = ConcurrentHashMap<String, PrecedentDetail>()
 
     override suspend fun searchLaws(query: String, bodySearch: Boolean): List<LawSummary> = withContext(io) {
         DrfParsers.parseLawSearch(api.searchLaws(query, search = if (bodySearch) 2 else 1))
@@ -71,6 +73,6 @@ class RemoteLawRepository(
     }
 
     override suspend fun getPrecedent(serialNo: String): PrecedentDetail = withContext(io) {
-        DrfParsers.parsePrecedent(api.getPrecedent(serialNo))
+        precedentCache[serialNo] ?: DrfParsers.parsePrecedent(api.getPrecedent(serialNo)).also { precedentCache[serialNo] = it }
     }
 }

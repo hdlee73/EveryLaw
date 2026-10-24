@@ -68,7 +68,7 @@ import com.hdlee73.everylaw.update.UpdateState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
+fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit, onOpenFss: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.updateState.collectAsStateWithLifecycle()
     var oc by rememberSaveable(settings.userOc) { mutableStateOf(settings.userOc) }
@@ -163,6 +163,14 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
                         trailingContent = { Switch(checked = settings.autoUpdate, onCheckedChange = vm::setAutoUpdate) },
                     )
                     UpdateStatusRow(update, onCheck = { vm.checkUpdate() })
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    ListItem(
+                        headlineContent = { Text("금감원 공개정보") },
+                        supportingContent = { Text("공개정보 글에 인용된 조문을 이 앱의 조문으로 연결") },
+                        leadingContent = { Icon(Icons.Outlined.Info, null) },
+                        trailingContent = { Icon(Icons.AutoMirrored.Outlined.ArrowForward, null) },
+                        modifier = Modifier.clickable(role = Role.Button, onClick = onOpenFss),
+                    )
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                     ListItem(
                         headlineContent = { Text("앱 정보") },

@@ -119,3 +119,30 @@ class PrecedentFilterTest {
         assertTrue(done.tree.precedentBasis.contains("2건"))
     }
 }
+
+class ArticleCitationExtractorTest {
+    private fun queries(s: String) = com.hdlee73.everylaw.core.parser.ArticleCitationExtractor.extract(s).map { it.query }
+
+    @Test fun findsAliasAndFormalNames() {
+        val text = "금융회사는 자본시장법 제55조 및 「금융소비자 보호에 관한 법률」 제19조제2항을 준수해야 한다."
+        assertEquals(listOf("자본시장법 제55조", "금융소비자 보호에 관한 법률 제19조"), queries(text))
+    }
+
+    @Test fun keepsDecreeLevelAndBranchNumber() {
+        assertEquals(listOf("자본시장법 시행령 제68조", "은행법 제34조의2"), queries("자본시장법 시행령 제68조, 은행법 제34조의2 참조"))
+    }
+
+    @Test fun skipsArticlesWithoutKnownLaw() {
+        assertEquals(emptyList<String>(), queries("제5조에 따라 또는 민원 제3조 안내"))
+    }
+
+    @Test fun mergesDuplicatesAndCountsThem() {
+        val r = com.hdlee73.everylaw.core.parser.ArticleCitationExtractor.extract("자본시장법 제55조 … 자본시장법 제55조")
+        assertEquals(1, r.size)
+        assertEquals(2, r[0].count)
+    }
+
+    @Test fun longerNameWinsOverSuffixMatch() {
+        assertEquals(listOf("상호저축은행법 제10조"), queries("상호저축은행법 제10조"))
+    }
+}

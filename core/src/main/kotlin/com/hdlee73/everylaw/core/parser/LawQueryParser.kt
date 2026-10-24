@@ -96,6 +96,10 @@ object LawAliases {
     fun namesFor(formal: String): List<String> =
         listOf(formal) + aliases.filterValues { it == formal }.keys
 
+    /** 본문에서 법령명을 알아볼 때 쓰는 이름들: 약칭, 정식 명칭, 감독규정의 모법 이름. 긴 이름이 먼저 온다. */
+    fun knownNames(): List<String> =
+        (aliases.keys + aliases.values + supervisory.keys).distinct().sortedByDescending { it.length }
+
     fun isKnown(name: String): Boolean = aliases.containsKey(name) || aliases.containsKey(name.replace(" ", "")) || supervisory.containsKey(name)
 
     fun resolve(name: String): String {

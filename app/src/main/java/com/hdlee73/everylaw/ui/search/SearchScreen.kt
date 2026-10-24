@@ -91,6 +91,7 @@ fun SearchScreen(
     onOpenLaw: (LawSummary) -> Unit,
     onOpenAdminRule: (AdminRuleSummary) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenFss: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
@@ -154,6 +155,7 @@ fun SearchScreen(
                             favorites = favorites,
                             onPick = { vm.submit(it) },
                             onClearRecent = vm::clearRecent,
+                            onOpenFss = onOpenFss,
                         )
                     }
                     is SearchUiState.Loading -> item {
@@ -333,6 +335,7 @@ private fun IdleContent(
     favorites: List<String>,
     onPick: (String) -> Unit,
     onClearRecent: () -> Unit,
+    onOpenFss: () -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Spacer(Modifier.height(4.dp))
@@ -342,6 +345,20 @@ private fun IdleContent(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Card(
+            onClick = onOpenFss,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("금감원 공개정보 보기", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "금융감독원 공개정보를 열어 보고, 글에 인용된 조문을 이 앱의 조문으로 바로 연결해요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Text("이렇게 찾아보세요", style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("자본시장법 제12조", "은행법 제34조", "보험업법 제95조의2", "내부통제").forEach {

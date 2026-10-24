@@ -244,6 +244,7 @@ private fun EverylawNavHost(
                 },
                 onOpenAdminRule = { nav.navigate("adminrule/${Uri.encode(it.serialNo)}") },
                 onOpenSettings = { nav.navigate(TopLevel.Settings.route) },
+                onOpenFss = { nav.navigate("fss") },
             )
         }
         composable(TopLevel.Favorites.route) {
@@ -271,7 +272,10 @@ private fun EverylawNavHost(
             )
         }
         composable(TopLevel.Settings.route) {
-            SettingsScreen(settingsVm, onOpenAbout = { nav.navigate("about") })
+            SettingsScreen(settingsVm, onOpenAbout = { nav.navigate("about") }, onOpenFss = { nav.navigate("fss") })
+        }
+        composable("fss") {
+            com.hdlee73.everylaw.ui.fss.FssScreen(onBack = { nav.popBackStack() }, onCite = runQuery)
         }
         composable("about") {
             AboutScreen(settingsVm, onBack = { nav.popBackStack() })

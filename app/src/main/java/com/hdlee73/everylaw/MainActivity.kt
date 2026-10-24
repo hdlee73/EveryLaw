@@ -184,7 +184,8 @@ private fun EverylawRoot(
         }
         Scaffold(
             modifier = Modifier.weight(1f),
-            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            // 위쪽(상태바)도 여기서 비워 두어, 스크롤하는 내용이 시계·배터리 뒤로 올라가 겹치지 않게 한다
+            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Vertical),
             bottomBar = {
                 if (!isWide && current != null) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
                     TopLevel.entries.forEach { t ->

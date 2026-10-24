@@ -27,6 +27,8 @@ data class TreeViewOptions(
     val highlight: String = "",
     val selectMode: Boolean = false,
     val hidden: Set<String> = emptySet(),
+    /** 하위 법규를 위임한 항·호 바로 아래에 펼쳐 보여 주는 방식 */
+    val inline: Boolean = false,
     val onHide: (nodeKey: String, hide: Boolean) -> Unit = { _, _ -> },
 )
 

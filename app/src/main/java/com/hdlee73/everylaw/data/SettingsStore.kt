@@ -28,6 +28,8 @@ data class AppSettings(
     val userOc: String = "",
     val autoUpdate: Boolean = true,
     val splitMode: SplitMode = SplitMode.Auto,
+    /** 하위 법규를 위임한 항·호 바로 아래에 펼쳐 보여 줄지(true), 접이식 묶음으로 둘지(false) */
+    val inlineDelegation: Boolean = true,
     val lastUpdateCheck: Long = 0L,
     val recent: List<String> = emptyList(),
     val favorites: List<String> = emptyList(),
@@ -46,6 +48,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
         val oc = stringPreferencesKey("law_oc")
         val autoUpdate = booleanPreferencesKey("auto_update")
         val splitMode = stringPreferencesKey("split_mode")
+        val inlineDelegation = booleanPreferencesKey("inline_delegation")
         val lastCheck = longPreferencesKey("last_update_check")
         val recent = stringPreferencesKey("recent")
         val favorites = stringPreferencesKey("favorites")
@@ -58,6 +61,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
             userOc = p[Keys.oc].orEmpty(),
             autoUpdate = p[Keys.autoUpdate] ?: true,
             splitMode = SplitMode.entries.firstOrNull { it.name == p[Keys.splitMode] } ?: SplitMode.Auto,
+            inlineDelegation = p[Keys.inlineDelegation] ?: true,
             lastUpdateCheck = p[Keys.lastCheck] ?: 0L,
             recent = p[Keys.recent].toList(),
             favorites = p[Keys.favorites].toList(),
@@ -72,6 +76,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
     suspend fun setOc(value: String) = context.dataStore.edit { it[Keys.oc] = value.trim() }
     suspend fun setAutoUpdate(value: Boolean) = context.dataStore.edit { it[Keys.autoUpdate] = value }
     suspend fun setSplitMode(value: SplitMode) = context.dataStore.edit { it[Keys.splitMode] = value.name }
+    suspend fun setInlineDelegation(value: Boolean) = context.dataStore.edit { it[Keys.inlineDelegation] = value }
     suspend fun markOcGuideSeen() = context.dataStore.edit { it[Keys.ocGuideSeen] = true }
     suspend fun markUpdateChecked(at: Long) = context.dataStore.edit { it[Keys.lastCheck] = at }
 

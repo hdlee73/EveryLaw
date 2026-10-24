@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.VerticalAlignBottom
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -78,6 +79,7 @@ import com.hdlee73.everylaw.core.model.formatYmd
 import com.hdlee73.everylaw.core.domain.ItemAttachment
 import com.hdlee73.everylaw.core.domain.TreeFilter
 import com.hdlee73.everylaw.core.domain.hiddenCount
+import com.hdlee73.everylaw.core.domain.withParagraphPieces
 import com.hdlee73.everylaw.core.domain.withoutHidden
 import com.hdlee73.everylaw.ui.LocalTreeViewOptions
 import com.hdlee73.everylaw.ui.TreeViewOptions
@@ -114,6 +116,7 @@ fun SearchScreen(
     val filter by vm.filter.collectAsStateWithLifecycle()
     val selectMode by vm.selectMode.collectAsStateWithLifecycle()
     val hidden by vm.hidden.collectAsStateWithLifecycle()
+    val inline by vm.inlineDelegation.collectAsStateWithLifecycle()
 
     val searchBar: @Composable ColumnScope.() -> Unit = {
         LawSearchBar(
@@ -130,13 +133,14 @@ fun SearchScreen(
         when (val s = state) {
             is SearchUiState.TreeSuccess -> {
                 // 숨김은 보기 화면·PDF 모두에서 빼고(체크하는 중에는 흐리게 보여 줌), 찾기는 맞는 줄과 그 상위만 남긴다.
-                val fullRoot = s.tree.root
+                // 인라인 방식이면 시행령 한 조의 항들을 위임 위치별로 쪼갠 트리를 쓴다
+                val fullRoot = remember(s.tree.root, inline) { if (inline) s.tree.root.withParagraphPieces() else s.tree.root }
                 val viewRoot = remember(fullRoot, hidden, selectMode, filter) {
                     TreeFilter.filter(if (selectMode) fullRoot else fullRoot.withoutHidden(hidden), filter)
                 }
                 val hiddenCount = remember(fullRoot, hidden) { fullRoot.hiddenCount(hidden) }
                 val matchCount = remember(viewRoot, filter) { TreeFilter.matchCount(viewRoot, filter) }
-                val shown = if (filter.isBlank() && viewRoot === fullRoot) s else {
+                val shown = if (filter.isBlank() && viewRoot === s.tree.root) s else {
                     // 찾는 중에는 맞는 줄이 접혀 있지 않게 모두 펼친다
                     val expanded = if (filter.isBlank()) s.expanded else {
                         viewRoot.flatten().map { it.id }.toSet() +
@@ -144,8 +148,8 @@ fun SearchScreen(
                     }
                     s.copy(tree = s.tree.copy(root = viewRoot), expanded = expanded)
                 }
-                val options = remember(filter, selectMode, hidden) {
-                    TreeViewOptions(filter.trim(), selectMode, hidden, onHide = vm::setHidden)
+                val options = remember(filter, selectMode, hidden, inline) {
+                    TreeViewOptions(filter.trim(), selectMode, hidden, inline, onHide = vm::setHidden)
                 }
                 CompositionLocalProvider(LocalTreeViewOptions provides options) {
                     LawTreeView(
@@ -179,6 +183,8 @@ fun SearchScreen(
                                 onSelectMode = vm::setSelectMode,
                                 hiddenCount = hiddenCount,
                                 onRestoreHidden = vm::restoreAllHidden,
+                                inline = inline,
+                                onInline = vm::setInlineDelegation,
                             )
                         },
                         onToggle = vm::toggle,
@@ -318,6 +324,8 @@ private fun TreeActions(
     onSelectMode: (Boolean) -> Unit,
     hiddenCount: Int,
     onRestoreHidden: () -> Unit,
+    inline: Boolean,
+    onInline: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -379,6 +387,11 @@ private fun TreeActions(
             onClick = { onSplitMode(modes[(splitMode.ordinal + 1) % modes.size]) },
             label = { Text("화면: ${splitMode.label}") },
             leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
+        )
+        AssistChip(
+            onClick = { onInline(!inline) },
+            label = { Text(if (inline) "하위법규: 바로 아래" else "하위법규: 묶음") },
+            leadingIcon = { Icon(Icons.Outlined.VerticalAlignBottom, null) },
         )
         AssistChip(
             onClick = { onSelectMode(!selectMode) },

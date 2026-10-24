@@ -72,7 +72,6 @@ import com.hdlee73.everylaw.ui.library.QueryListScreen
 import com.hdlee73.everylaw.ui.search.SearchScreen
 import com.hdlee73.everylaw.ui.search.SearchViewModel
 import com.hdlee73.everylaw.ui.settings.AboutScreen
-import com.hdlee73.everylaw.ui.settings.FirstRunOcGuide
 import com.hdlee73.everylaw.ui.settings.SettingsScreen
 import com.hdlee73.everylaw.ui.settings.SettingsViewModel
 import com.hdlee73.everylaw.ui.settings.UpdateDialog
@@ -154,9 +153,6 @@ private fun EverylawRoot(
         searchVm.submit(q)
         goTop(TopLevel.Home)
     }
-
-    // 첫 실행 한 번: 기본(공용) 인증키와 본인 OC 발급 안내
-    FirstRunOcGuide(settingsVm, onOpenSettings = { goTop(TopLevel.Settings) })
 
     // 분할 화면 여부: 설정(자동/항상/안 함)을 따른다. 내비게이션 레일/하단바는 화면 크기로만 정한다.
     val appSettings by settingsVm.settings.collectAsStateWithLifecycle()
@@ -272,7 +268,7 @@ private fun EverylawNavHost(
             )
         }
         composable(TopLevel.Settings.route) {
-            SettingsScreen(settingsVm, onOpenAbout = { nav.navigate("about") }, onOpenFss = { nav.navigate("fss") })
+            SettingsScreen(settingsVm, onOpenAbout = { nav.navigate("about") })
         }
         composable("fss") {
             com.hdlee73.everylaw.ui.fss.FssScreen(onBack = { nav.popBackStack() }, onCite = runQuery)

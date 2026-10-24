@@ -68,68 +68,15 @@ import com.hdlee73.everylaw.update.UpdateState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit, onOpenFss: () -> Unit) {
+fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.updateState.collectAsStateWithLifecycle()
-    var oc by rememberSaveable(settings.userOc) { mutableStateOf(settings.userOc) }
-    var reveal by rememberSaveable { mutableStateOf(false) }
-    // 기본 키가 내장된 빌드에서는 입력란을 접어 두고, 원할 때만 내 OC로 덮어쓴다
-    var showOverride by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(topBar = { LargeTopAppBar(title = { Text("설정") }) }) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).widthIn(max = 720.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(10.dp))
-                        Text("국가법령정보 API 인증(OC)", style = MaterialTheme.typography.titleMedium)
-                    }
-                    val overrideOpen = !vm.hasBuiltInKey || showOverride || settings.userOc.isNotEmpty()
-                    OcGuideText(hasBuiltInKey = vm.hasBuiltInKey, usingOwnKey = settings.userOc.isNotBlank())
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!overrideOpen) TextButton(onClick = { showOverride = true }) { Text("내 OC로 바꾸기") }
-                        OpenOcGuideButton()
-                    }
-                    if (overrideOpen) Text(
-                        "입력한 OC는 이 기기에만 저장되고, 기본 키보다 우선해서 쓰여요.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (overrideOpen) OutlinedTextField(
-                        value = oc,
-                        onValueChange = { oc = it },
-                        label = { Text("OC") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        trailingIcon = {
-                            IconButton(onClick = { reveal = !reveal }) {
-                                Icon(if (reveal) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = if (reveal) "숨기기" else "보기")
-                            }
-                        },
-                    )
-                    if (overrideOpen) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { vm.saveOc(oc) }, enabled = oc != settings.userOc) { Text("저장") }
-                        if (settings.userOc.isNotEmpty()) {
-                            OutlinedButton(onClick = { oc = ""; vm.saveOc(""); showOverride = false }) {
-                                Text(if (vm.hasBuiltInKey) "기본 키로 되돌리기" else "지우기")
-                            }
-                        }
-                    }
-                    val mode = when {
-                        settings.userOc.isNotBlank() -> "직접 입력한 키로 실제 API 조회 중"
-                        vm.hasBuiltInKey -> "기본 내장 키로 실제 API 조회 중"
-                        else -> "데모 모드"
-                    }
-                    Text("현재 상태: $mode", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("분할 화면", style = MaterialTheme.typography.titleMedium)
@@ -163,14 +110,6 @@ fun SettingsScreen(vm: SettingsViewModel, onOpenAbout: () -> Unit, onOpenFss: ()
                         trailingContent = { Switch(checked = settings.autoUpdate, onCheckedChange = vm::setAutoUpdate) },
                     )
                     UpdateStatusRow(update, onCheck = { vm.checkUpdate() })
-                    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                    ListItem(
-                        headlineContent = { Text("금감원 공개정보") },
-                        supportingContent = { Text("공개정보 글에 인용된 조문을 이 앱의 조문으로 연결") },
-                        leadingContent = { Icon(Icons.Outlined.Info, null) },
-                        trailingContent = { Icon(Icons.AutoMirrored.Outlined.ArrowForward, null) },
-                        modifier = Modifier.clickable(role = Role.Button, onClick = onOpenFss),
-                    )
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                     ListItem(
                         headlineContent = { Text("앱 정보") },

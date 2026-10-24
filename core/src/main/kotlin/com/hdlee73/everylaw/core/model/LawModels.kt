@@ -93,6 +93,13 @@ data class Article(
     val title: String,
     val content: String,
 ) {
+    /** "제85조(불건전 영업행위의 금지)" — 본문 머리말이 있으면 그것, 없으면 조 번호와 제목을 이어 만든다. */
+    val fullTitle: String
+        get() = parsed.header.ifBlank {
+            val t = title.trim()
+            (number?.display.orEmpty()) + if (t.isEmpty() || t.startsWith("(")) t else "($t)"
+        }
+
     val heading: String
         get() = listOfNotNull(number?.display, title.takeIf { it.isNotBlank() }).joinToString(" ")
 

@@ -22,8 +22,8 @@ class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settings = SettingsStore(context.applicationContext, appScope)
 
-    /** 사용자가 입력한 키 > 빌드 시 주입한 키 */
-    private fun currentOc(): String = settings.settings.value.userOc.ifBlank { BuiltInKey.oc }
+    /** 빌드 시 주입한 기본 키만 쓴다(사용자가 키를 따로 입력하는 화면은 없다). */
+    private fun currentOc(): String = BuiltInKey.oc
 
     // 요청 URL에 OC가 붙으므로 HTTP 로깅 인터셉터는 달지 않는다.
     private val api = LawApiService.create(ocProvider = ::currentOc)

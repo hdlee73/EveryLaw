@@ -223,8 +223,8 @@ private fun TreeHeader(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(tree.law.name, style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.75f))
                 Text(
-                    "${tree.query.target} 위임 구조",
-                    style = MaterialTheme.typography.titleLarge,
+                    "${tree.root.article.fullTitle} 및 하위 법규",
+                    style = MaterialTheme.typography.titleMedium,
                     color = androidx.compose.ui.graphics.Color.White,
                 )
             }
@@ -245,8 +245,7 @@ private fun TreeHeader(
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Info, contentDescription = null)
                     Spacer(Modifier.width(10.dp))
-                    Text("데모 데이터입니다. 설정에서 국가법령정보 OC를 입력하면 실제 법령을 조회해요.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = onOpenSettings) { Text("설정") }
+                    Text("데모 데이터입니다. 이 빌드에는 국가법령정보 API 인증키가 들어 있지 않아요.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -256,7 +255,8 @@ private fun TreeHeader(
     }
 }
 
-/** 스크롤해도 화면 위에 붙어 있는 작업 줄: 전체 펼치기/접기, 시행 연혁, PDF 저장, 공유 */
+/** 스크롤해도 화면 위에 붙어 있는 작업 줄: PDF 저장, 공유, 시행 연혁, 펼치기/접기, 분할 화면 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TreeActions(
     tree: DelegationTree,
@@ -299,22 +299,12 @@ private fun TreeActions(
         )
     }
 
-    Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp),
+    // 옆으로 밀지 않고도 모두 보이도록 줄바꿈한다. 글자는 짧게.
+    FlowRow(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        // 분할 화면 방식을 설정에 가지 않고 바로 바꾼다 (자동 → 항상 분할 → 분할 안 함 → 자동 …)
-        val modes = com.hdlee73.everylaw.data.SplitMode.entries
-        AssistChip(
-            onClick = { onSplitMode(modes[(splitMode.ordinal + 1) % modes.size]) },
-            label = { Text("화면: ${splitMode.label}") },
-            leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
-        )
-        if (!isWide) {
-            AssistChip(onClick = { onExpandAll(true) }, label = { Text("전체 펼치기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldMore, null) })
-            AssistChip(onClick = { onExpandAll(false) }, label = { Text("접기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldLess, null) })
-        }
-        AssistChip(onClick = onVersions, label = { Text("시행 연혁") }, leadingIcon = { Icon(Icons.Outlined.History, null) })
         AssistChip(
             onClick = { chooseFor = false },
             label = { Text("PDF 저장") },
@@ -324,6 +314,18 @@ private fun TreeActions(
             onClick = { chooseFor = true },
             label = { Text("공유") },
             leadingIcon = { Icon(Icons.Outlined.Share, null) },
+        )
+        AssistChip(onClick = onVersions, label = { Text("시행 연혁") }, leadingIcon = { Icon(Icons.Outlined.History, null) })
+        if (!isWide) {
+            AssistChip(onClick = { onExpandAll(true) }, label = { Text("펼치기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldMore, null) })
+            AssistChip(onClick = { onExpandAll(false) }, label = { Text("접기") }, leadingIcon = { Icon(Icons.Outlined.UnfoldLess, null) })
+        }
+        // 분할 화면 방식을 설정에 가지 않고 바로 바꾼다 (자동 → 항상 분할 → 분할 안 함 → 자동 …)
+        val modes = com.hdlee73.everylaw.data.SplitMode.entries
+        AssistChip(
+            onClick = { onSplitMode(modes[(splitMode.ordinal + 1) % modes.size]) },
+            label = { Text("화면: ${splitMode.label}") },
+            leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
         )
     }
 }

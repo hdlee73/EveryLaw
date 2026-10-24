@@ -146,3 +146,29 @@ class ArticleCitationExtractorTest {
         assertEquals(listOf("상호저축은행법 제10조"), queries("상호저축은행법 제10조"))
     }
 }
+
+/** 본문 검색 결과가 가나다순으로 길게 나오고, 자본시장법은 맨 뒤(또는 아예 빠진) 상황 */
+private class CrowdedRepo(private val cmaInBodyResults: Boolean) : LawRepository by FakeRepo() {
+    private val cma = FakeRepo().law
+    private val fillers = (1..9).map { LawSummary("f$it", "20$it", "가나다${it}법", null, "법률", "20260101") }
+    override suspend fun searchLaws(query: String, bodySearch: Boolean): List<LawSummary> = when {
+        bodySearch -> fillers + if (cmaInBodyResults) listOf(cma) else emptyList()
+        CMA.replace(" ", "") == query.replace(" ", "") -> listOf(cma)
+        else -> emptyList()
+    }
+    override suspend fun getLawArticles(law: LawSummary, article: ArticleNo?) =
+        if (law.mst == cma.mst) FakeRepo().articles else listOf(Article(ArticleNo("1"), "(목적)", "제1조(목적) 관련 없음"))
+}
+
+class KeywordCrowdedTest {
+    @Test fun majorLawIsScannedEvenWhenLastInResultList() = runTest {
+        val r = SearchKeywordUseCase(CrowdedRepo(cmaInBodyResults = true))("손실보전")
+        assertTrue(r.articleHits.any { it.law.name == CMA && it.article.number == ArticleNo("55") })
+    }
+
+    @Test fun widensToMajorFinancialLawsMissingFromResultList() = runTest {
+        val r = SearchKeywordUseCase(CrowdedRepo(cmaInBodyResults = false))("손실보전")
+        assertTrue(r.articleHits.any { it.law.name == CMA })
+        assertTrue(r.scanNote.contains("넓혀"))
+    }
+}

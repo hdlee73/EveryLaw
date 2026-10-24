@@ -107,6 +107,9 @@ object LawAliases {
         return aliases[name] ?: aliases[compact] ?: name
     }
 
+    /** 키워드만으로 조문을 찾을 때 먼저 훑는 주요 금융법령(정식 명칭) */
+    fun majorLaws(): List<String> = (supervisory.keys + aliases.values.filter { it != "개인정보 보호법" }).distinct()
+
     fun supervisoryRegulations(lawName: String): List<String> = supervisory[lawName]?.first.orEmpty()
 
     fun enforcementDetails(lawName: String): List<String> = supervisory[lawName]?.second.orEmpty()

@@ -19,7 +19,9 @@ import com.hdlee73.everylaw.core.parser.LawQueryParser
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -298,9 +300,8 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
             }
             if (failures.size == 3) throw LawDomainException.ApiFailure(failures.joinToString("\n"))
             val lawList = lawsR.getOrDefault(emptyList())
-            val hits = lawList.take(TOP_LAWS).map { law ->
-                async { runCatching { articleHits(law, listOf(k), PER_LAW_UNSCOPED) }.getOrDefault(emptyList()) }
-            }.awaitAll().flatten()
+            val scan = scanUnscoped(k, lawList)
+            val hits = scan.hits
             KeywordSearchResult(
                 keyword = k,
                 laws = lawList,
@@ -309,8 +310,59 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
                 isSample = repository.isSample,
                 warnings = failures,
                 articleHits = hits,
+                scanNote = scan.note,
             )
         }
+    }
+
+    private class Scan(val hits: List<ArticleHit>, val note: String)
+
+    /**
+     * 법령명 없이 키워드만 넣었을 때 조문을 찾는다.
+     * 본문 검색 결과는 관련도순이 아니라서(가나다순에 가깝다) 앞의 몇 곳만 보면 자본시장법 같은 핵심 법령이 빠진다.
+     * 그래서 주요 금융법령과 모법(법률)을 먼저, 동시에 여러 곳을 훑고, 그래도 없으면 나머지 결과와
+     * 검색 결과에 빠진 주요 금융법령까지 넓혀 찾는다.
+     */
+    private suspend fun scanUnscoped(k: String, found: List<LawSummary>): Scan = coroutineScope {
+        val gate = Semaphore(SCAN_PARALLEL)
+        suspend fun scan(laws: List<LawSummary>): List<ArticleHit> = laws.map { law ->
+            async {
+                gate.withPermit {
+                    withTimeoutOrNull(SCAN_TIMEOUT_MS) {
+                        runCatching { articleHits(law, listOf(k), PER_LAW_UNSCOPED) }.getOrDefault(emptyList())
+                    } ?: emptyList()
+                }
+            }
+        }.awaitAll().flatten()
+
+        fun compact(n: String) = n.replace(" ", "")
+        val major = LawAliases.majorLaws().map(::compact).toSet()
+        val ordered = found.sortedWith(
+            compareBy<LawSummary>({ if (compact(it.name) in major) 0 else 1 }, { if (it.name.endsWith("시행령") || it.name.endsWith("시행규칙")) 1 else 0 }),
+        )
+        var scanned = ordered.take(MAX_SCAN)
+        var hits = scan(scanned)
+        var widened = false
+        if (hits.isEmpty()) {
+            widened = true
+            val rest = ordered.drop(MAX_SCAN)
+            val missing = LawAliases.majorLaws().filter { m -> ordered.none { compact(it.name) == compact(m) } }.map { name ->
+                async {
+                    gate.withPermit {
+                        runCatching { repository.searchLaws(name) }.getOrDefault(emptyList()).firstOrNull { compact(it.name) == compact(name) }
+                    }
+                }
+            }.awaitAll().filterNotNull()
+            val more = rest + missing
+            hits = scan(more)
+            scanned = scanned + more
+        }
+        val names = scanned.take(3).joinToString(", ") { it.name } + if (scanned.size > 3) " 등" else ""
+        val note = if (scanned.isEmpty()) "" else
+            "조문은 법령 ${scanned.size}곳($names)의 제목·내용에서 찾았어요." +
+                (if (widened) " 처음 훑은 곳에 없어 나머지 검색 결과와 주요 금융법령까지 넓혀 봤어요." else "") +
+                " 법령명을 앞에 붙이면 그 법 전체에서 찾아요."
+        Scan(hits.sortedByDescending { it.inTitle }, note)
     }
 
     /** "법령명 키워드…" 형태면 그 법령으로 범위를 좁힌 결과, 아니면 null. */
@@ -375,7 +427,9 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
         "${e::class.simpleName}: ${e.message?.takeIf { it.isNotBlank() } ?: "(메시지 없음)"}"
 
     companion object {
-        const val TOP_LAWS = 3
+        const val MAX_SCAN = 8
+        const val SCAN_PARALLEL = 4
+        const val SCAN_TIMEOUT_MS = 30_000L
         const val PER_LAW_UNSCOPED = 8
         const val MAX_SCOPED_HITS = 40
     }

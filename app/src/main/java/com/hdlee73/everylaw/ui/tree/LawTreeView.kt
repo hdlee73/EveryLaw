@@ -34,6 +34,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.hdlee73.everylaw.ui.CitationText
+import com.hdlee73.everylaw.ui.LocalTreeViewOptions
+import com.hdlee73.everylaw.ui.highlighted
+import com.hdlee73.everylaw.core.domain.stableKey
+import androidx.compose.material3.Checkbox
+import androidx.compose.ui.draw.alpha
 import com.hdlee73.everylaw.ui.citationContext
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -267,7 +272,12 @@ private fun StepNode(root: LawNode, node: LawNode, isLast: Boolean, expanded: Se
     val open = node.id in expanded
     val rotation by animateFloatAsState(if (open) 180f else 0f, label = "step-chevron")
     val labelColor = if (node.level == LawLevel.SUPERVISORY_REGULATION) tone.onContainer else tone.accent
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    val opts = LocalTreeViewOptions.current
+    val isHidden = node.stableKey in opts.hidden
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min).alpha(if (isHidden) 0.45f else 1f),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             StepDot(node.level)
             Box(
@@ -283,9 +293,16 @@ private fun StepNode(root: LawNode, node: LawNode, isLast: Boolean, expanded: Se
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (opts.selectMode) {
+                    Checkbox(
+                        checked = isHidden,
+                        onCheckedChange = { opts.onHide(node.stableKey, it) },
+                        modifier = Modifier.semantics { contentDescription = "${node.article.heading} 숨기기" },
+                    )
+                }
                 Text(node.level.label, style = MaterialTheme.typography.labelMedium, color = labelColor)
                 Text(
-                    node.article.heading.ifBlank { node.sourceName },
+                    highlighted(node.article.heading.ifBlank { node.sourceName }, opts.highlight),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                     maxLines = if (open) 3 else 2,
@@ -394,6 +411,8 @@ private fun SplitNodeTree(node: LawNode, depth: Int, selectedId: String, onSelec
 @Composable
 private fun SplitTreeRow(node: LawNode, depth: Int, selected: Boolean, onClick: () -> Unit) {
     val tone = LevelColors.current[node.level]
+    val opts = LocalTreeViewOptions.current
+    val isHidden = node.stableKey in opts.hidden
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
@@ -403,13 +422,21 @@ private fun SplitTreeRow(node: LawNode, depth: Int, selected: Boolean, onClick: 
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = (depth * 14).dp)
+            .alpha(if (isHidden) 0.45f else 1f)
             .semantics { if (selected) stateDescription = "선택됨" },
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (opts.selectMode) {
+                Checkbox(
+                    checked = isHidden,
+                    onCheckedChange = { opts.onHide(node.stableKey, it) },
+                    modifier = Modifier.semantics { contentDescription = "${node.article.heading} 숨기기" },
+                )
+            }
             StepDot(node.level)
             Column(Modifier.weight(1f)) {
                 Text(
-                    node.article.heading.ifBlank { node.sourceName },
+                    highlighted(node.article.heading.ifBlank { node.sourceName }, opts.highlight),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
                     maxLines = 2,

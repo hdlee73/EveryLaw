@@ -57,12 +57,22 @@ class InlineDelegationTest {
     }
 
     @Test fun compareRowsAlignLawPartsWithDelegations() {
-        val rows = CompareTable.build(tree(), 3)
+        val rows = CompareTable.build(tree(), setOf(LawLevel.DECREE, LawLevel.RULE))
         assertEquals(2, rows.size)
+        assertTrue(rows[0].lawText.startsWith("제85조(불건전 영업행위의 금지)"))
         assertTrue(rows[0].lawText.contains("다만"))
         assertEquals(listOf(LawLevel.DECREE), rows[0].cells.keys.toList())
         assertTrue(rows[1].lawText.contains("1. 가격에"))
         assertTrue(rows[1].lawText.contains("2. 자기"))
         assertEquals(setOf(LawLevel.DECREE, LawLevel.RULE), rows[1].cells.keys)
+    }
+
+    @Test fun onlyChosenLevelsBecomeColumnsAndEmptyRowsMerge() {
+        // 시행령은 고르지 않고 시행규칙만: 제1항(시행령) 줄은 비므로 법률 글이 시행규칙이 있는 줄에 합쳐진다
+        val rows = CompareTable.build(tree(), setOf(LawLevel.RULE))
+        assertEquals(1, rows.size)
+        assertEquals(listOf(LawLevel.RULE), rows[0].cells.keys.toList())
+        assertTrue(rows[0].lawText.contains("다만") && rows[0].lawText.contains("2. 자기"))
+        assertEquals(listOf(LawLevel.LAW, LawLevel.RULE), CompareTable.columns(setOf(LawLevel.RULE)))
     }
 }

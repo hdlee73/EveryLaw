@@ -67,12 +67,16 @@ private fun splitChild(c: LawNode, lawNo: ArticleNo): List<LawNode> {
 /** 비교표 한 줄: 법률 조문의 한 부분과, 그 부분을 위임 근거로 삼은 단계별 규정들. */
 data class CompareRow(val lawText: String, val cells: Map<LawLevel, List<LawNode>>)
 
-/** 3단·4단·5단 비교표. 법률 조문의 위임 위치별로 시행령·시행규칙·감독규정·시행세칙을 같은 줄에 나란히 놓는다. */
+/**
+ * 단계 비교표(2단~5단). 법률은 항상 첫 열이고, 사용자가 고른 시행령·시행규칙·감독규정·시행세칙만 열로 만든다.
+ * 법률 조문의 위임 위치별로 고른 단계의 규정을 같은 줄에 나란히 놓는다.
+ */
 object CompareTable {
-    fun levels(tiers: Int): List<LawLevel> = LawLevel.entries.take(tiers.coerceIn(3, 5))
+    /** 법률을 맨 앞에 두고, 고른 단계를 위임 순서대로 이은 열 목록 */
+    fun columns(chosen: Set<LawLevel>): List<LawLevel> = LawLevel.entries.filter { it == LawLevel.LAW || it in chosen }
 
-    fun build(root: LawNode, tiers: Int): List<CompareRow> {
-        val levels = levels(tiers)
+    fun build(root: LawNode, chosen: Set<LawLevel>): List<CompareRow> {
+        val levels = columns(chosen)
         val split = root.withParagraphPieces()
         val attached = ItemAttachment.attach(split.article, split.children)
         val parsed = split.article.parsed
@@ -91,12 +95,16 @@ object CompareTable {
         }
         fun emit(path: ItemPath, blankLabel: String? = null) {
             val nodes = attached[path] ?: return
-            val text = pending.toString().ifBlank { blankLabel.orEmpty() }
-            rows += CompareRow(text, cells(nodes))
+            val c = cells(nodes)
+            // 고른 단계에 해당하는 규정이 없으면 줄을 만들지 않고, 법률 글은 다음 줄에 이어 붙인다
+            if (c.isEmpty()) return
+            rows += CompareRow(pending.toString().ifBlank { blankLabel.orEmpty() }, c)
             pending.clear()
         }
 
-        if (parsed.items.isEmpty() && parsed.lead.isBlank()) add(split.article.content) else add(parsed.lead)
+        // 법률 열 맨 위에 조문번호와 제목("제85조(불건전 영업행위의 금지)")
+        add(split.article.fullTitle)
+        if (parsed.items.isEmpty() && parsed.lead.isBlank()) add(split.article.body) else add(parsed.lead)
         emit(ItemPath.LEAD)
         fun item(i: ArticleItem, depth: Int) {
             add("  ".repeat(depth) + i.text)

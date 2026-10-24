@@ -12,6 +12,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.core.content.FileProvider
 import com.hdlee73.everylaw.BuildConfig
+import com.hdlee73.everylaw.core.domain.CompareTable
 import com.hdlee73.everylaw.core.domain.ItemAttachment
 import com.hdlee73.everylaw.core.model.ArticleItem
 import com.hdlee73.everylaw.core.model.DelegationTree
@@ -38,9 +39,17 @@ data class PdfOptions(
     val precedentList: Boolean = true,
     val precedentBodies: Boolean = false,
     val relatedArticles: Boolean = false,
-    /** 0 = 현행(위에서 아래로 이어 쓰기), 3·4·5 = 법률·시행령·시행규칙(·감독규정·시행세칙)을 열로 나란히 놓는 비교표 */
-    val compareTiers: Int = 0,
+    /** true 면 고른 단계(levels)를 열로 나란히 놓는 비교표(가로), false 면 현행 방식(위에서 아래로 이어 쓰기) */
+    val compare: Boolean = false,
+    val paper: PdfPaper = PdfPaper.A4,
 )
+
+/** 용지 크기(1/72 인치, 세로 기준). 비교표는 가로로 돌려 쓴다. B4는 ISO 250x353mm. */
+enum class PdfPaper(val label: String, val w: Int, val h: Int) {
+    A4("A4", 595, 842),
+    B4("B4", 709, 1001),
+    A3("A3", 842, 1191),
+}
 
 object PdfExporter {
 
@@ -76,13 +85,9 @@ object PdfExporter {
         out: OutputStream,
     ) = withContext(Dispatchers.IO) {
         val doc = PdfDocument()
-        val compare = options.compareTiers >= 3
-        // 비교표는 열이 많아 가로로 쓰고, 5단은 A3 가로(1191x842)로 넓힌다.
-        val w = when {
-            !compare -> Writer(doc)
-            options.compareTiers >= 5 -> Writer(doc, 1191, 842)
-            else -> Writer(doc, PAGE_H, PAGE_W)
-        }
+        val compare = options.compare && CompareTable.columns(options.levels).size >= 2
+        // 비교표는 가로, 현행 방식은 세로. 용지 크기는 사용자가 고른다.
+        val w = if (compare) Writer(doc, options.paper.h, options.paper.w) else Writer(doc, options.paper.w, options.paper.h)
         val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA).format(Date())
         val purple = 0xFF4F378B.toInt()
 
@@ -104,8 +109,8 @@ object PdfExporter {
                 if (options.relatedArticles) "인용 조문" else null,
             )).joinToString(", ")
         if (compare) {
-            val names = com.hdlee73.everylaw.core.domain.CompareTable.levels(options.compareTiers).joinToString("·") { it.label }
-            w.text("비교 방식: ${options.compareTiers}단 비교 ($names)", 9f, color = Color.DKGRAY)
+            val cols = CompareTable.columns(options.levels)
+            w.text("비교 방식: ${cols.size}단 비교 (${cols.joinToString("·") { it.label }}) · ${options.paper.label} 가로", 9f, color = Color.DKGRAY)
         } else w.text("포함 범위: $scope", 9f, color = Color.DKGRAY)
         tree.warnings.forEach { w.text("※ $it", 8.5f, color = Color.GRAY) }
         w.gap(10f)
@@ -121,7 +126,7 @@ object PdfExporter {
 
         val root = tree.root
         if (compare) {
-            PdfCompare.draw(w, root, options.compareTiers)
+            PdfCompare.draw(w, root, options.levels)
         } else {
         // 법률 조문: 항·호·목 줄 바로 아래에 그 위치가 위임한 하위 규정을 둔다.
         val children = keepLevels(root.children, options.levels)

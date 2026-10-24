@@ -28,6 +28,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -126,13 +130,15 @@ private fun AccordionTreeView(
     modifier: Modifier,
 ) {
     val root = state.tree.root
+    val listState = rememberLazyListState()
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "header") { Column { header() } }
-        stickyHeader(key = "actions") { actions() }
+        stickyHeader(key = "actions") { StickyBelowStatusBar(listState, actions) }
         item(key = "article") {
             ArticleCard {
                 ArticleBody(root, state.expanded, onToggle) { nodes ->
@@ -142,6 +148,19 @@ private fun AccordionTreeView(
         }
         precedentItems(state.tree, onOpenPrecedent)
     }
+}
+
+/**
+ * 위로 스크롤해 작업 줄이 화면 맨 위에 붙으면 상태바 아래로 내려 붙인다.
+ * 그러지 않으면 작업 줄이 상태바 밑에 깔려 버튼이 눌리지 않는다. 붙기 전(머리띠 아래)에는 여백 없이 그대로 둔다.
+ */
+@Composable
+private fun StickyBelowStatusBar(listState: LazyListState, content: @Composable () -> Unit) {
+    val stuck by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+    Box(
+        if (stuck) Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).statusBarsPadding()
+        else Modifier.fillMaxWidth(),
+    ) { content() }
 }
 
 /** 법률 조문 카드(흰 카드). 제목은 위의 남색 머리 카드에 있고, 여기에는 본문(항·호·목)과 그 아래 위임 규정이 들어간다. */
@@ -366,13 +385,15 @@ private fun SplitTreeView(
 ) {
     Row(modifier.fillMaxSize().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // 왼쪽: 상위 조문 + 위임 트리
+        val listState = rememberLazyListState()
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "header") { Column { header() } }
-            stickyHeader(key = "actions") { actions() }
+            stickyHeader(key = "actions") { StickyBelowStatusBar(listState, actions) }
             item(key = "article") {
                 val root = state.tree.root
                 ArticleCard {
@@ -401,7 +422,7 @@ private fun SplitTreeView(
         }
         // 오른쪽: 선택한 하위 규정 본문 (또는 판례 목록)
         Card(
-            modifier = Modifier.weight(1f).fillMaxHeight().padding(bottom = 12.dp),
+            modifier = Modifier.weight(1f).fillMaxHeight().statusBarsPadding().padding(bottom = 12.dp),
             shape = MaterialTheme.shapes.extraLarge,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),

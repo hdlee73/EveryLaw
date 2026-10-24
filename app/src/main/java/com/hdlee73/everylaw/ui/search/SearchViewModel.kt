@@ -121,6 +121,7 @@ class SearchViewModel(
         // 이미 조문 결과를 보고 있으면 새 시점으로 다시 조회
         val current = _state.value
         if (current is SearchUiState.TreeSuccess) runTree(current.tree.query.raw, pushHistory = false)
+        else if (current is SearchUiState.KeywordSuccess) runKeyword(current.result.keyword)
     }
 
     /**
@@ -168,7 +169,7 @@ class SearchViewModel(
         job = viewModelScope.launch {
             _state.value = SearchUiState.Loading("'$q' 키워드로 법령·행정규칙·판례 찾는 중")
             _state.value = try {
-                val result = searchKeyword(q)
+                val result = searchKeyword(q, _asOf.value)
                 push(before)
                 settings.addRecent(q)
                 SearchUiState.KeywordSuccess(result)

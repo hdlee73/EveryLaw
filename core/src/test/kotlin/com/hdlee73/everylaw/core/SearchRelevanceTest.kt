@@ -172,3 +172,39 @@ class KeywordCrowdedTest {
         assertTrue(r.scanNote.contains("넓혀"))
     }
 }
+
+/** 1999년에는 증권거래법만 있고 자본시장법(2009 시행)은 없던 상황 */
+private class HistoricalRepo : LawRepository by FakeRepo() {
+    private val oldName = "증권거래법"
+    private val old = LawVersion("old1", oldName, "19980101", null, "일부개정", "연혁")
+    private val cma = LawVersion("cma1", CMA, "20090204", null, "제정", "현행")
+    override suspend fun searchLaws(query: String, bodySearch: Boolean) = FakeRepo().let {
+        if (bodySearch) listOf(it.law) else emptyList()
+    }
+    override suspend fun searchLawVersionsAsOf(name: String, ymd: String): List<LawVersion> =
+        listOf(old, cma).filter { it.name.replace(" ", "").contains(name.replace(" ", "")) && it.effectiveDate <= ymd }
+    override suspend fun getLawArticlesAt(version: LawVersion, article: ArticleNo?) =
+        if (version.mst == "old1") listOf(Article(ArticleNo("8"), "(유가증권신고서)", "제8조(유가증권신고서) 증권신고서를 제출하여야 한다."))
+        else FakeRepo().articles
+}
+
+class KeywordAsOfTest {
+    @Test fun asOf1999FindsOldLawAndSkipsLawNotYetInForce() = runTest {
+        val r = SearchKeywordUseCase(HistoricalRepo())("증권신고서", "19991006")
+        assertTrue(r.articleHits.isNotEmpty())
+        assertTrue(r.articleHits.all { it.law.name == "증권거래법" })
+        assertTrue(r.laws.isEmpty() && r.adminRules.isEmpty())
+        assertTrue(r.scanNote.contains("1999.10.06"))
+    }
+
+    @Test fun lawNamePlusKeywordAsOfUsesThatDatesVersion() = runTest {
+        val r = SearchKeywordUseCase(HistoricalRepo())("증권거래법 증권신고서", "19991006")
+        assertEquals("증권거래법", r.scopeLaw?.name)
+        assertEquals(1, r.articleHits.size)
+    }
+
+    @Test fun lawNotYetInForceIsNotFoundAsOf() = runTest {
+        val r = SearchKeywordUseCase(HistoricalRepo())("자본시장법 손실보전", "19991006")
+        assertEquals(null, r.scopeLaw)
+    }
+}

@@ -110,6 +110,12 @@ object LawAliases {
     /** 키워드만으로 조문을 찾을 때 먼저 훑는 주요 금융법령(정식 명칭) */
     fun majorLaws(): List<String> = (supervisory.keys + aliases.values.filter { it != "개인정보 보호법" }).distinct()
 
+    /** 기준일 검색에서 먼저 보는, 지금은 폐지됐거나 이름이 바뀐 금융 구법령 */
+    fun historicalFinancialLaws(): List<String> = listOf(
+        "증권거래법", "증권투자신탁업법", "간접투자자산운용업법", "선물거래법", "종합금융회사에 관한 법률",
+        "금융산업의 구조개선에 관한 법률", "자산유동화에 관한 법률", "신탁법", "외국환거래법", "한국증권선물거래소법",
+    )
+
     fun supervisoryRegulations(lawName: String): List<String> = supervisory[lawName]?.first.orEmpty()
 
     fun enforcementDetails(lawName: String): List<String> = supervisory[lawName]?.second.orEmpty()

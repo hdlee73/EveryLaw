@@ -10,7 +10,7 @@ import com.hdlee73.everylaw.core.model.LawNode
  * 단계+법령명+조문번호로 만든 [stableKey]를 쓴다.
  */
 val LawNode.stableKey: String
-    get() = "${level.name}|$sourceName|${article.number?.display ?: article.title}"
+    get() = "${level.name}|$sourceName|${article.number?.display ?: article.title}" + part?.let { "#$it" }.orEmpty()
 
 /** 이 트리에서 [hidden] 키에 해당하는 노드(와 그 아래 전체)를 뺀 사본. 루트는 숨기지 않는다. */
 fun LawNode.withoutHidden(hidden: Set<String>): LawNode =

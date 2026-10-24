@@ -448,7 +448,7 @@ object ItemAttachment {
         val paths = article.parsed.allPaths()
         return children.groupBy { c ->
             var p = c.anchor ?: ItemPath()
-            while (!p.isEmpty && p !in paths) p = p.parent()
+            while (!p.isEmpty && p != ItemPath.LEAD && p !in paths) p = p.parent()
             p
         }
     }

@@ -7,6 +7,7 @@ import com.hdlee73.everylaw.core.domain.GetDelegationTreeUseCase
 import com.hdlee73.everylaw.core.domain.GetLawVersionsUseCase
 import com.hdlee73.everylaw.core.domain.LawDomainException
 import com.hdlee73.everylaw.core.domain.SearchKeywordUseCase
+import com.hdlee73.everylaw.core.domain.withParagraphPieces
 import com.hdlee73.everylaw.core.domain.withoutHidden
 import com.hdlee73.everylaw.core.model.DelegationTree
 import com.hdlee73.everylaw.core.model.KeywordSearchResult
@@ -76,6 +77,14 @@ class SearchViewModel(
     /** 결과 안에서 찾는 글 (키워드 또는 "제12조") */
     private val _filter = MutableStateFlow("")
     val filter: StateFlow<String> = _filter.asStateFlow()
+
+    /** 하위 법규를 위임 위치 바로 아래에 보여 주는지 */
+    val inlineDelegation: StateFlow<Boolean> = settings.settings.map { it.inlineDelegation }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setInlineDelegation(on: Boolean) {
+        viewModelScope.launch { settings.setInlineDelegation(on) }
+    }
 
     /** 숨길 항목을 체크하는 중인지 (켜져 있는 동안은 숨긴 항목도 흐리게 보인다) */
     private val _selectMode = MutableStateFlow(false)
@@ -178,8 +187,9 @@ class SearchViewModel(
     }
 
     fun expandAll(expand: Boolean) = updateTree { s ->
-        val groups = com.hdlee73.everylaw.core.domain.ItemAttachment.attach(s.tree.root.article, s.tree.root.children).keys.map { "grp:" + it.key }
-        s.copy(expanded = if (expand) (s.tree.root.flatten().map { it.id } + groups).toSet() else setOf(s.tree.root.id))
+        val root = if (inlineDelegation.value) s.tree.root.withParagraphPieces() else s.tree.root
+        val groups = com.hdlee73.everylaw.core.domain.ItemAttachment.attach(root.article, root.children).keys.map { "grp:" + it.key }
+        s.copy(expanded = if (expand) (root.flatten().map { it.id } + groups).toSet() else setOf(root.id))
     }
 
     fun setFilter(text: String) {
@@ -215,7 +225,9 @@ class SearchViewModel(
     }
 
     private fun defaultExpanded(tree: DelegationTree): Set<String> =
-        tree.root.flatten().filter { it.level == LawLevel.LAW || it.level == LawLevel.DECREE }.map { it.id }.toSet()
+        // 항별로 쪼갠 조각(id에 #)도 처음부터 펼쳐 둔다
+        (tree.root.flatten() + tree.root.withParagraphPieces().flatten())
+            .filter { it.level == LawLevel.LAW || it.level == LawLevel.DECREE }.map { it.id }.toSet()
 
     // ---------- 시행 연혁 ----------
 

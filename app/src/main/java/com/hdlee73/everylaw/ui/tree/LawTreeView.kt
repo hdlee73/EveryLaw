@@ -185,9 +185,15 @@ private fun ArticleBody(
     val parsed = root.article.parsed
     val attached = remember(root) { ItemAttachment.attach(root.article, root.children) }
 
+    val inline = LocalTreeViewOptions.current.inline
+
     @Composable
     fun Group(path: ItemPath, depth: Int) {
         val nodes = attached[path] ?: return
+        if (inline) {
+            InlineDelegation(nodes, "${path.display.ifEmpty { "조 전체" }}에 위임한 하위 규정", depth, content = { renderNodes(nodes) })
+            return
+        }
         DelegationGroup(
             nodes = nodes,
             title = if (path.isEmpty) "조 전체에 연결된 하위 규정" else "${path.display} 하위 규정",
@@ -212,8 +218,29 @@ private fun ArticleBody(
         ArticleTitle(root.article)
         if (parsed.lead.isNotBlank()) CitationText(parsed.lead, ctx, style = LawBodyStyle, selectable = true)
         if (parsed.items.isEmpty() && parsed.lead.isBlank()) CitationText(root.article.content, ctx, style = LawBodyStyle, selectable = true)
+        Group(ItemPath.LEAD, 0)
         parsed.items.forEach { Item(it, 0) }
         Group(ItemPath(), 0)
+    }
+}
+
+/** 위임한 항·호 바로 아래에 펼쳐 보이는 하위 규정. 왼쪽 세로선으로 위 줄에 딸린 내용임을 나타낸다. */
+@Composable
+private fun InlineDelegation(nodes: List<LawNode>, title: String, depth: Int, content: @Composable () -> Unit) {
+    Row(
+        Modifier.padding(start = (depth * 14).dp, top = 2.dp).height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "↳ $title (${nodes.sumOf { 1 + it.descendantCount }}건)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+            content()
+        }
     }
 }
 
@@ -297,12 +324,12 @@ private fun StepNode(root: LawNode, node: LawNode, isLast: Boolean, expanded: Se
                     Checkbox(
                         checked = isHidden,
                         onCheckedChange = { opts.onHide(node.stableKey, it) },
-                        modifier = Modifier.semantics { contentDescription = "${node.article.heading} 숨기기" },
+                        modifier = Modifier.semantics { contentDescription = "${node.displayHeading} 숨기기" },
                     )
                 }
                 Text(node.level.label, style = MaterialTheme.typography.labelMedium, color = labelColor)
                 Text(
-                    highlighted(node.article.heading.ifBlank { node.sourceName }, opts.highlight),
+                    highlighted(node.displayHeading.ifBlank { node.sourceName }, opts.highlight),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                     maxLines = if (open) 3 else 2,
@@ -430,13 +457,13 @@ private fun SplitTreeRow(node: LawNode, depth: Int, selected: Boolean, onClick: 
                 Checkbox(
                     checked = isHidden,
                     onCheckedChange = { opts.onHide(node.stableKey, it) },
-                    modifier = Modifier.semantics { contentDescription = "${node.article.heading} 숨기기" },
+                    modifier = Modifier.semantics { contentDescription = "${node.displayHeading} 숨기기" },
                 )
             }
             StepDot(node.level)
             Column(Modifier.weight(1f)) {
                 Text(
-                    highlighted(node.article.heading.ifBlank { node.sourceName }, opts.highlight),
+                    highlighted(node.displayHeading.ifBlank { node.sourceName }, opts.highlight),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
                     maxLines = 2,
@@ -475,7 +502,7 @@ private fun NodeDetail(tree: DelegationTree, node: LawNode, onSelect: (String) -
             node.issuer?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
         }
         Text(node.sourceName, style = MaterialTheme.typography.titleMedium)
-        Text(node.article.heading, style = MaterialTheme.typography.headlineSmall)
+        Text(node.displayHeading, style = MaterialTheme.typography.headlineSmall)
         CitationText(node.article.body, citationContext(tree.root, node), style = LawBodyStyle, selectable = true)
 
         if (node.children.isNotEmpty()) {

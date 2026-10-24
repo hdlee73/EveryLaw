@@ -209,6 +209,8 @@ data class DelegationTree(
     val isSample: Boolean = false,
     /** 일부 단계 조회 실패 등 사용자에게 알릴 참고 메시지. */
     val warnings: List<String> = emptyList(),
+    /** 판례를 어떤 기준으로 골랐는지 화면에 보여 줄 안내 */
+    val precedentBasis: String = "",
 )
 
 /** 판례 검색 결과 한 건 (lawSearch.do target=prec). */
@@ -219,6 +221,8 @@ data class PrecedentSummary(
     val decisionDate: String?,
     val court: String?,
     val caseType: String?,
+    /** 관련도 판정 근거("참조조문에 인용" 등). 검색 결과 그대로면 null */
+    val matchNote: String? = null,
 )
 
 /** 판례 본문 (lawService.do target=prec). */
@@ -231,6 +235,14 @@ data class PrecedentDetail(
     val fullText: String,
 )
 
+/** 조문 제목·본문 키워드 검색에서 찾은 조문 한 건. */
+data class ArticleHit(
+    val law: LawSummary,
+    val article: Article,
+    val inTitle: Boolean,
+    val snippet: String,
+)
+
 /** 키워드 통합 검색 결과. */
 data class KeywordSearchResult(
     val keyword: String,
@@ -240,6 +252,10 @@ data class KeywordSearchResult(
     val isSample: Boolean = false,
     /** 일부 출처가 실패했을 때의 구체적인 원인 (예: "법령: DrfFormatException: …") */
     val warnings: List<String> = emptyList(),
+    /** 조문 제목·본문에서 찾은 조문 */
+    val articleHits: List<ArticleHit> = emptyList(),
+    /** "법령명 + 키워드"로 범위를 좁힌 경우 그 법령 */
+    val scopeLaw: LawSummary? = null,
 )
 
 /**

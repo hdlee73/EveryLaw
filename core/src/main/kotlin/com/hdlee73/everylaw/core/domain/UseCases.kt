@@ -11,12 +11,15 @@ import com.hdlee73.everylaw.core.model.LawQuery
 import com.hdlee73.everylaw.core.model.LawSummary
 import com.hdlee73.everylaw.core.model.LawVersion
 import com.hdlee73.everylaw.core.model.formatYmd
+import com.hdlee73.everylaw.core.model.ArticleHit
 import com.hdlee73.everylaw.core.model.PrecedentDetail
+import com.hdlee73.everylaw.core.model.PrecedentSummary
 import com.hdlee73.everylaw.core.parser.LawAliases
 import com.hdlee73.everylaw.core.parser.LawQueryParser
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -112,13 +115,9 @@ class GetDelegationTreeUseCase(
         }
 
         emit(DelegationProgress.Step("감독규정·시행세칙과 판례 찾는 중"))
-        val (supervisory, details, precedents) = coroutineScope {
+        val (supervisory, details, precedentResult) = coroutineScope {
             val names = async { relatedAdminRuleNames(law) }
-            val prec = async {
-                runCatching { repository.searchPrecedents("${law.name} ${query.article.display}") }
-                    .onFailure { warnings += "판례 조회 실패: ${it.message}" }
-                    .getOrDefault(emptyList())
-            }
+            val prec = async { findRelevantPrecedents(law, query.article, warnings) }
             val (supNames, detNames) = names.await()
             val sup = async { loadAdminRules(supNames, warnings) }
             val det = async { loadAdminRules(detNames, warnings) }
@@ -147,12 +146,55 @@ class GetDelegationTreeUseCase(
                     root = root,
                     asOf = asOf,
                     version = version,
-                    precedents = precedents.take(30),
+                    precedents = precedentResult.first,
+                    precedentBasis = precedentResult.second,
                     isSample = repository.isSample,
                     warnings = warnings.toList(),
                 )
             )
         )
+    }
+
+    /**
+     * 판례 검색 결과(본문 검색이라 범위가 넓다)에서, 판례 본문이 이 법령의 이 조문을 실제로 인용한 것만 고른다.
+     * 후보의 본문을 받아 [PrecedentRelevance]로 판정하고, 인용 위치(참조조문 > 판결요지 > 본문)와 선고일 순으로 정렬한다.
+     * 본문을 하나도 받지 못하면 걸러내지 못한 것이므로 검색 결과 상위만 그대로 보여 주고 그 사실을 알린다.
+     */
+    private suspend fun findRelevantPrecedents(
+        law: LawSummary,
+        article: ArticleNo,
+        warnings: MutableList<String>,
+    ): Pair<List<PrecedentSummary>, String> {
+        val target = "${law.name} ${article.display}"
+        val candidates = runCatching { repository.searchPrecedents(target) }
+            .onFailure { warnings += "판례 조회 실패: ${it.message}" }
+            .getOrDefault(emptyList())
+            .take(MAX_PREC_CANDIDATES)
+        if (repository.isSample) return candidates.take(10) to "데모 데이터라 관련도를 가리지 않고 예시 판례를 보여 드려요."
+        if (candidates.isEmpty()) return emptyList<PrecedentSummary>() to "'$target'을(를) 본문에서 찾은 판례가 없어요."
+
+        val names = (listOfNotNull(law.name, law.abbreviation) + LawAliases.namesFor(law.name)).distinct()
+        val gate = kotlinx.coroutines.sync.Semaphore(6)
+        val checked = coroutineScope {
+            candidates.map { p ->
+                async {
+                    gate.withPermit {
+                        val detail = runCatching { repository.getPrecedent(p.serialNo) }.getOrNull()
+                        detail?.let { p to PrecedentRelevance.where(it, names, article) }
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }
+        if (checked.isEmpty()) {
+            return candidates.take(10) to "판례 본문을 확인하지 못해 관련도를 가리지 못했어요. 검색 결과 최근 ${minOf(10, candidates.size)}건을 그대로 보여 드려요."
+        }
+        val picked = checked.mapNotNull { (p, where) -> where?.let { p.copy(matchNote = it.label) to it } }
+            .sortedWith(compareByDescending<Pair<PrecedentSummary, PrecedentRelevance.Where>> { it.second.rank }.thenByDescending { it.first.decisionDate.orEmpty() })
+            .map { it.first }
+            .take(MAX_PRECEDENTS_SHOWN)
+        val basis = "판례 본문 검색 결과 ${candidates.size}건 중, 본문에서 '${law.name}'(약칭 포함) 바로 뒤에 ${article.display}를 인용한 ${picked.size}건만 골랐어요. " +
+            "참조조문 → 판결요지 → 본문 순으로, 같은 순서면 최근 선고순이에요. 다른 법령의 같은 조 번호 인용은 제외했어요."
+        return picked to basis
     }
 
     /** 항·호·목까지 지정한 검색: 그 부분의 본문과, 그 위치로 연결된 하위 규정만 남긴다. */
@@ -225,19 +267,27 @@ class GetDelegationTreeUseCase(
     companion object {
         const val MAX_ADMIN_DOCS = 3
         const val MAX_FALLBACK_ARTICLES = 30
+        const val MAX_PREC_CANDIDATES = 40
+        const val MAX_PRECEDENTS_SHOWN = 20
     }
 }
 
 private fun ArticleNo?.sameAs(other: ArticleNo): Boolean =
     this != null && main.trimStart('0') == other.main.trimStart('0') && (branch ?: 0) == (other.branch ?: 0)
 
-/** 법령·행정규칙·판례를 한 번에 찾는 키워드 검색. 일부가 실패해도 나머지 결과는 보여준다. */
+/**
+ * 법령·행정규칙·판례를 한 번에 찾는 키워드 검색. 일부가 실패해도 나머지 결과는 보여준다.
+ *
+ * - "자본시장법 손실보전"처럼 앞에 법령명을 붙이면 그 법령 안에서 조문 제목·내용을 찾는다.
+ * - 키워드만 입력하면 법령 본문 검색에서 나온 상위 법령 안에서도 조문 제목·내용을 찾아 함께 보여 준다.
+ */
 class SearchKeywordUseCase(private val repository: LawRepository) {
     suspend operator fun invoke(keyword: String): KeywordSearchResult {
         val k = keyword.trim()
         if (k.length < 2) throw LawDomainException.InvalidQuery("검색어를 두 글자 이상 입력해 주세요.")
+        scoped(k)?.let { return it }
         return coroutineScope {
-            val laws = async { runCatching { repository.searchLaws(k) } }
+            val laws = async { runCatching { repository.searchLaws(k, bodySearch = true) } }
             val rules = async { runCatching { repository.searchAdminRules(k) } }
             val precs = async { runCatching { repository.searchPrecedents(k) } }
             val lawsR = laws.await()
@@ -247,19 +297,88 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
                 r.exceptionOrNull()?.let { "$label 검색 실패 · ${describe(it)}" }
             }
             if (failures.size == 3) throw LawDomainException.ApiFailure(failures.joinToString("\n"))
+            val lawList = lawsR.getOrDefault(emptyList())
+            val hits = lawList.take(TOP_LAWS).map { law ->
+                async { runCatching { articleHits(law, listOf(k), PER_LAW_UNSCOPED) }.getOrDefault(emptyList()) }
+            }.awaitAll().flatten()
             KeywordSearchResult(
                 keyword = k,
-                laws = lawsR.getOrDefault(emptyList()),
+                laws = lawList,
                 adminRules = rulesR.getOrDefault(emptyList()),
                 precedents = precsR.getOrDefault(emptyList()),
                 isSample = repository.isSample,
                 warnings = failures,
+                articleHits = hits,
             )
         }
     }
 
+    /** "법령명 키워드…" 형태면 그 법령으로 범위를 좁힌 결과, 아니면 null. */
+    private suspend fun scoped(k: String): KeywordSearchResult? {
+        val tokens = k.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        for (i in tokens.size - 1 downTo 1) {
+            val prefix = tokens.take(i).joinToString(" ")
+            if (!looksLikeLawName(prefix)) continue
+            val resolved = LawAliases.resolve(prefix)
+            val compact = resolved.replace(" ", "")
+            val found = runCatching { repository.searchLaws(resolved) }.getOrDefault(emptyList())
+            val law = found.firstOrNull { it.name.replace(" ", "") == compact }
+                ?: found.firstOrNull { it.name.replace(" ", "").contains(compact) }
+                ?: continue
+            val words = tokens.drop(i)
+            return coroutineScope {
+                val hits = async { runCatching { articleHits(law, words, MAX_SCOPED_HITS) } }
+                val precs = async { runCatching { repository.searchPrecedents("${law.name} ${words.joinToString(" ")}") } }
+                val hitsR = hits.await()
+                val warnings = listOfNotNull(
+                    hitsR.exceptionOrNull()?.let { "조문 검색 실패 · ${describe(it)}" },
+                    precs.await().exceptionOrNull()?.let { "판례 검색 실패 · ${describe(it)}" },
+                )
+                KeywordSearchResult(
+                    keyword = k,
+                    laws = listOf(law),
+                    adminRules = emptyList(),
+                    precedents = precs.await().getOrDefault(emptyList()),
+                    isSample = repository.isSample,
+                    warnings = warnings,
+                    articleHits = hitsR.getOrDefault(emptyList()),
+                    scopeLaw = law,
+                )
+            }
+        }
+        return null
+    }
+
+    private fun looksLikeLawName(s: String): Boolean {
+        val c = s.replace(" ", "")
+        return LawAliases.isKnown(s) || c.endsWith("법") || c.endsWith("법률") || c.endsWith("령")
+    }
+
+    /** 법령의 조문 중 제목·본문에 [words]가 모두 들어 있는 것. 제목에 들어 있는 조문을 먼저, 그 안에서는 조문 순서대로. */
+    private suspend fun articleHits(law: LawSummary, words: List<String>, limit: Int): List<ArticleHit> {
+        val articles = repository.getLawArticles(law).filter { it.number != null }
+        return articles.mapNotNull { a ->
+            val inTitle = words.all { a.title.contains(it) }
+            val inBody = words.all { (a.title + "\n" + a.content).contains(it) }
+            if (!inTitle && !inBody) null else ArticleHit(law, a, inTitle, snippet(a, words))
+        }.sortedByDescending { it.inTitle }.take(limit)
+    }
+
+    private fun snippet(a: Article, words: List<String>): String {
+        val line = a.content.lines().firstOrNull { l -> words.any { l.contains(it) } } ?: return ""
+        val at = line.indexOf(words.first { line.contains(it) })
+        val from = (at - 20).coerceAtLeast(0)
+        return (if (from > 0) "…" else "") + line.substring(from, minOf(line.length, from + 80)).trim() + if (from + 80 < line.length) "…" else ""
+    }
+
     private fun describe(e: Throwable): String =
         "${e::class.simpleName}: ${e.message?.takeIf { it.isNotBlank() } ?: "(메시지 없음)"}"
+
+    companion object {
+        const val TOP_LAWS = 3
+        const val PER_LAW_UNSCOPED = 8
+        const val MAX_SCOPED_HITS = 40
+    }
 }
 
 class GetLawVersionsUseCase(private val repository: LawRepository) {

@@ -56,7 +56,10 @@ class GetDelegationTreeUseCase(
         }
 
         emit(DelegationProgress.Step("'${query.lawName}' 찾는 중"))
-        val law = pickLaw(query, repository.searchLaws(query.lawName))
+        val candidates = repository.searchLaws(query.lawName)
+        // 기준일 조회: 이름이 같은 현행 법령이 없으면(폐지된 구법령 등) 그날 시행 중이던 법령을 연혁에서 찾는다.
+        val law = (if (asOf != null) pickLaw(query, candidates, exactOnly = true) ?: historicalLaw(query.lawName, asOf) else null)
+            ?: pickLaw(query, candidates)
             ?: throw LawDomainException.NotFound("'${query.lawName}' 법령을 찾지 못했어요.")
 
         // 병렬 조회(async)에서 함께 쓰므로 동기화 리스트
@@ -235,12 +238,19 @@ class GetDelegationTreeUseCase(
         }.onFailure { warnings += "'$name' 본문 조회 실패: ${it.message}" }.getOrNull()
     }
 
-    private fun pickLaw(query: LawQuery, candidates: List<LawSummary>): LawSummary? {
+    private suspend fun historicalLaw(name: String, asOf: String): LawSummary? {
+        val compact = LawAliases.resolve(name).replace(" ", "")
+        val v = runCatching { repository.searchLawVersionsAsOf(LawAliases.resolve(name), asOf) }.getOrDefault(emptyList())
+            .firstOrNull { it.name.replace(" ", "") == compact } ?: return null
+        return LawSummary(v.mst, v.mst, v.name, null, "법률", v.effectiveDate)
+    }
+
+    private fun pickLaw(query: LawQuery, candidates: List<LawSummary>, exactOnly: Boolean = false): LawSummary? {
         val compact = query.lawName.replace(" ", "")
         return candidates.firstOrNull { it.name.replace(" ", "") == compact }
             ?: candidates.firstOrNull { it.abbreviation?.replace(" ", "") == compact }
-            ?: candidates.firstOrNull { it.kind == "법률" }
-            ?: candidates.firstOrNull()
+            ?: candidates.takeIf { !exactOnly }?.firstOrNull { it.kind == "법률" }
+            ?: candidates.takeIf { !exactOnly }?.firstOrNull()
     }
 
     /** (감독규정 이름들, 시행세칙 이름들) */
@@ -284,10 +294,11 @@ private fun ArticleNo?.sameAs(other: ArticleNo): Boolean =
  * - 키워드만 입력하면 법령 본문 검색에서 나온 상위 법령 안에서도 조문 제목·내용을 찾아 함께 보여 준다.
  */
 class SearchKeywordUseCase(private val repository: LawRepository) {
-    suspend operator fun invoke(keyword: String): KeywordSearchResult {
+    /** @param asOf 기준일(yyyyMMdd). 주면 그날 시행 중이던 법령(폐지된 구법령 포함)에서 조문을 찾는다. */
+    suspend operator fun invoke(keyword: String, asOf: String? = null): KeywordSearchResult {
         val k = keyword.trim()
         if (k.length < 2) throw LawDomainException.InvalidQuery("검색어를 두 글자 이상 입력해 주세요.")
-        scoped(k)?.let { return it }
+        scoped(k, asOf)?.let { return it }
         return coroutineScope {
             val laws = async { runCatching { repository.searchLaws(k, bodySearch = true) } }
             val rules = async { runCatching { repository.searchAdminRules(k) } }
@@ -300,15 +311,19 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
             }
             if (failures.size == 3) throw LawDomainException.ApiFailure(failures.joinToString("\n"))
             val lawList = lawsR.getOrDefault(emptyList())
-            val scan = scanUnscoped(k, lawList)
+            val scan = if (asOf != null) scanAsOf(k, asOf, lawList) else scanUnscoped(k, lawList)
             val hits = scan.hits
+            // 기준일 검색: 법령·행정규칙 목록은 현행 기준이라 그 시점과 맞지 않으므로 보여 주지 않는다.
+            val asOfNote = if (asOf == null) emptyList() else listOf(
+                "기준일(${formatYmd(asOf)}) 검색: 조문은 그날 시행 중이던 법령에서 찾았어요. 법령·행정규칙 목록은 현행 기준이라 제외했고 판례는 현행 검색 그대로예요.",
+            )
             KeywordSearchResult(
                 keyword = k,
-                laws = lawList,
-                adminRules = rulesR.getOrDefault(emptyList()),
+                laws = if (asOf != null) emptyList() else lawList,
+                adminRules = if (asOf != null) emptyList() else rulesR.getOrDefault(emptyList()),
                 precedents = precsR.getOrDefault(emptyList()),
                 isSample = repository.isSample,
-                warnings = failures,
+                warnings = failures + asOfNote,
                 articleHits = hits,
                 scanNote = scan.note,
             )
@@ -345,7 +360,7 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
         var widened = false
         if (hits.isEmpty()) {
             widened = true
-            val rest = ordered.drop(MAX_SCAN)
+            val rest = ordered.drop(MAX_SCAN).take(MAX_WIDEN_REST)
             val missing = LawAliases.majorLaws().filter { m -> ordered.none { compact(it.name) == compact(m) } }.map { name ->
                 async {
                     gate.withPermit {
@@ -357,29 +372,91 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
             hits = scan(more)
             scanned = scanned + more
         }
-        val names = scanned.take(3).joinToString(", ") { it.name } + if (scanned.size > 3) " 등" else ""
         val note = if (scanned.isEmpty()) "" else
-            "조문은 법령 ${scanned.size}곳($names)의 제목·내용에서 찾았어요." +
+            "법령 ${scanned.size}곳을 훑었어요. " + foundIn(hits) +
                 (if (widened) " 처음 훑은 곳에 없어 나머지 검색 결과와 주요 금융법령까지 넓혀 봤어요." else "") +
                 " 법령명을 앞에 붙이면 그 법 전체에서 찾아요."
         Scan(hits.sortedByDescending { it.inTitle }, note)
     }
 
+    /** "자본시장법 등 3곳(…)에서 조문을 찾았어요." / 없으면 "찾지 못했어요." */
+    private fun foundIn(hits: List<ArticleHit>): String {
+        val laws = hits.map { it.law.name }.distinct()
+        return if (laws.isEmpty()) "조문을 찾지 못했어요." else
+            "조문은 ${laws.size}곳(${laws.take(3).joinToString(", ")}${if (laws.size > 3) " 등" else ""})에서 찾았어요."
+    }
+
+    private fun asLawSummary(v: LawVersion) = LawSummary(v.mst, v.mst, v.name, null, null, v.effectiveDate)
+
+    /**
+     * 기준일 키워드 검색. 현행 법령 목록은 그 시점에 없던 법(예: 1999년의 자본시장법)을 섞으므로 쓰지 않고,
+     * 금융 구법령·주요 금융법령과 본문 검색에 걸린 법령 이름을 연혁(시행일 법령)에서 그날의 버전으로 찾아 훑는다.
+     */
+    private suspend fun scanAsOf(k: String, asOf: String, bodyResults: List<LawSummary>): Scan = coroutineScope {
+        val gate = Semaphore(SCAN_PARALLEL)
+        fun compact(n: String) = n.replace(" ", "")
+        val names = (LawAliases.historicalFinancialLaws() + LawAliases.majorLaws() + bodyResults.take(ASOF_BODY_LAWS).map { it.name })
+            .distinctBy(::compact)
+        val versions = names.map { name ->
+            async { gate.withPermit { runCatching { repository.searchLawVersionsAsOf(name, asOf) }.getOrDefault(emptyList()) } }
+        }.awaitAll().flatten().distinctBy { it.mst }
+            // 모법(법률)을 시행령·시행규칙보다 먼저, 같은 종류끼리는 위 이름 순서대로
+            .sortedBy { if (it.name.endsWith("시행령") || it.name.endsWith("시행규칙")) 1 else 0 }
+
+        suspend fun scan(vs: List<LawVersion>): List<ArticleHit> = vs.map { v ->
+            async {
+                gate.withPermit {
+                    withTimeoutOrNull(SCAN_TIMEOUT_MS) {
+                        runCatching { articleHits(asLawSummary(v), listOf(k), PER_LAW_UNSCOPED, v) }.getOrDefault(emptyList())
+                    } ?: emptyList()
+                }
+            }
+        }.awaitAll().flatten()
+
+        var scanned = versions.take(MAX_SCAN)
+        var hits = scan(scanned)
+        var widened = false
+        if (hits.isEmpty() && versions.size > MAX_SCAN) {
+            widened = true
+            val more = versions.drop(MAX_SCAN).take(MAX_ASOF_WIDEN)
+            hits = scan(more)
+            scanned = scanned + more
+        }
+        val note = if (scanned.isEmpty()) {
+            "${formatYmd(asOf)}에 시행 중이던 법령을 연혁에서 찾지 못했어요. 법령명을 앞에 붙여 보세요(예: 증권거래법 ${k})."
+        } else {
+            "${formatYmd(asOf)} 시행 법령 ${scanned.size}곳을 훑었어요. " + foundIn(hits) +
+                (if (widened) " 처음 훑은 곳에 없어 더 넓혀 봤어요." else "") +
+                " 법령명을 앞에 붙이면 그 법 전체에서 찾아요."
+        }
+        Scan(hits.sortedByDescending { it.inTitle }, note)
+    }
+
     /** "법령명 키워드…" 형태면 그 법령으로 범위를 좁힌 결과, 아니면 null. */
-    private suspend fun scoped(k: String): KeywordSearchResult? {
+    private suspend fun scoped(k: String, asOf: String?): KeywordSearchResult? {
         val tokens = k.split(Regex("""\s+""")).filter { it.isNotEmpty() }
         for (i in tokens.size - 1 downTo 1) {
             val prefix = tokens.take(i).joinToString(" ")
             if (!looksLikeLawName(prefix)) continue
             val resolved = LawAliases.resolve(prefix)
             val compact = resolved.replace(" ", "")
-            val found = runCatching { repository.searchLaws(resolved) }.getOrDefault(emptyList())
-            val law = found.firstOrNull { it.name.replace(" ", "") == compact }
-                ?: found.firstOrNull { it.name.replace(" ", "").contains(compact) }
-                ?: continue
+            // 기준일이 있으면 그날 시행 중이던 버전(폐지된 구법령 포함)에서 찾는다.
+            val (law, version) = if (asOf != null) {
+                val vs = runCatching { repository.searchLawVersionsAsOf(resolved, asOf) }.getOrDefault(emptyList())
+                val v = vs.firstOrNull { it.name.replace(" ", "") == compact }
+                    ?: vs.firstOrNull { it.name.replace(" ", "").contains(compact) }
+                    ?: continue
+                asLawSummary(v) to v
+            } else {
+                val found = runCatching { repository.searchLaws(resolved) }.getOrDefault(emptyList())
+                val l = found.firstOrNull { it.name.replace(" ", "") == compact }
+                    ?: found.firstOrNull { it.name.replace(" ", "").contains(compact) }
+                    ?: continue
+                l to null
+            }
             val words = tokens.drop(i)
             return coroutineScope {
-                val hits = async { runCatching { articleHits(law, words, MAX_SCOPED_HITS) } }
+                val hits = async { runCatching { articleHits(law, words, MAX_SCOPED_HITS, version) } }
                 val precs = async { runCatching { repository.searchPrecedents("${law.name} ${words.joinToString(" ")}") } }
                 val hitsR = hits.await()
                 val warnings = listOfNotNull(
@@ -407,8 +484,8 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
     }
 
     /** 법령의 조문 중 제목·본문에 [words]가 모두 들어 있는 것. 제목에 들어 있는 조문을 먼저, 그 안에서는 조문 순서대로. */
-    private suspend fun articleHits(law: LawSummary, words: List<String>, limit: Int): List<ArticleHit> {
-        val articles = repository.getLawArticles(law).filter { it.number != null }
+    private suspend fun articleHits(law: LawSummary, words: List<String>, limit: Int, version: LawVersion? = null): List<ArticleHit> {
+        val articles = (if (version != null) repository.getLawArticlesAt(version) else repository.getLawArticles(law)).filter { it.number != null }
         return articles.mapNotNull { a ->
             val inTitle = words.all { a.title.contains(it) }
             val inBody = words.all { (a.title + "\n" + a.content).contains(it) }
@@ -428,6 +505,9 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
 
     companion object {
         const val MAX_SCAN = 8
+        const val MAX_ASOF_WIDEN = 12
+        const val MAX_WIDEN_REST = 8
+        const val ASOF_BODY_LAWS = 6
         const val SCAN_PARALLEL = 4
         const val SCAN_TIMEOUT_MS = 30_000L
         const val PER_LAW_UNSCOPED = 8

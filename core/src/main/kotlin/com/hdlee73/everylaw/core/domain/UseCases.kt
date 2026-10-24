@@ -352,8 +352,11 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
 
         fun compact(n: String) = n.replace(" ", "")
         val major = LawAliases.majorLaws().map(::compact).toSet()
-        val ordered = found.sortedWith(
-            compareBy<LawSummary>({ if (compact(it.name) in major) 0 else 1 }, { if (it.name.endsWith("시행령") || it.name.endsWith("시행규칙")) 1 else 0 }),
+        // 법령명에 키워드가 든 법령(본문 검색에는 밀릴 수 있다)을 따로 찾아 맨 앞에 둔다
+        val byName = runCatching { repository.searchLaws(k) }.getOrDefault(emptyList()).filter { compact(it.name).contains(compact(k)) }
+        val nameIds = byName.map { it.id }.toSet()
+        val ordered = (byName + found.filter { it.id !in nameIds }).sortedWith(
+            compareBy<LawSummary>({ if (it.id in nameIds) 0 else 1 }, { if (compact(it.name) in major) 0 else 1 }, { if (it.name.endsWith("시행령") || it.name.endsWith("시행규칙")) 1 else 0 }),
         )
         var scanned = ordered.take(MAX_SCAN)
         var hits = scan(scanned)
@@ -395,13 +398,17 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
     private suspend fun scanAsOf(k: String, asOf: String, bodyResults: List<LawSummary>): Scan = coroutineScope {
         val gate = Semaphore(SCAN_PARALLEL)
         fun compact(n: String) = n.replace(" ", "")
-        val names = (LawAliases.historicalFinancialLaws() + LawAliases.majorLaws() + bodyResults.take(ASOF_BODY_LAWS).map { it.name })
+        // 키워드 자체(와 그 낱말)를 법령명 검색어로 먼저 쓴다. 구법령은 이름이 달라(예: "주식회사의 외부감사에 관한 법률")
+        // 고정 목록에 없어도 "외부감사"로 연혁을 찾으면 걸린다.
+        val nameQueries = (listOf(k) + k.split(Regex("""\s+""")).filter { it.length >= 2 }).distinctBy(::compact)
+        val names = (nameQueries + LawAliases.historicalFinancialLaws() + LawAliases.majorLaws() + bodyResults.take(ASOF_BODY_LAWS).map { it.name })
             .distinctBy(::compact)
+        fun nameMatches(n: String) = nameQueries.any { compact(n).contains(compact(it)) }
         val versions = names.map { name ->
             async { gate.withPermit { runCatching { repository.searchLawVersionsAsOf(name, asOf) }.getOrDefault(emptyList()) } }
         }.awaitAll().flatten().distinctBy { it.mst }
-            // 모법(법률)을 시행령·시행규칙보다 먼저, 같은 종류끼리는 위 이름 순서대로
-            .sortedBy { if (it.name.endsWith("시행령") || it.name.endsWith("시행규칙")) 1 else 0 }
+            // 이름에 키워드가 든 법령 먼저, 그다음 모법(법률)을 시행령·시행규칙보다 먼저, 같은 종류끼리는 위 이름 순서대로
+            .sortedWith(compareBy<LawVersion>({ if (nameMatches(it.name)) 0 else 1 }, { if (it.name.endsWith("시행령") || it.name.endsWith("시행규칙")) 1 else 0 }))
 
         suspend fun scan(vs: List<LawVersion>): List<ArticleHit> = vs.map { v ->
             async {
@@ -413,12 +420,12 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
             }
         }.awaitAll().flatten()
 
-        var scanned = versions.take(MAX_SCAN)
+        var scanned = versions.take(MAX_ASOF_SCAN)
         var hits = scan(scanned)
         var widened = false
-        if (hits.isEmpty() && versions.size > MAX_SCAN) {
+        if (hits.isEmpty() && versions.size > MAX_ASOF_SCAN) {
             widened = true
-            val more = versions.drop(MAX_SCAN).take(MAX_ASOF_WIDEN)
+            val more = versions.drop(MAX_ASOF_SCAN).take(MAX_ASOF_WIDEN)
             hits = scan(more)
             scanned = scanned + more
         }
@@ -505,9 +512,10 @@ class SearchKeywordUseCase(private val repository: LawRepository) {
 
     companion object {
         const val MAX_SCAN = 8
-        const val MAX_ASOF_WIDEN = 12
+        const val MAX_ASOF_SCAN = 12
+        const val MAX_ASOF_WIDEN = 16
         const val MAX_WIDEN_REST = 8
-        const val ASOF_BODY_LAWS = 6
+        const val ASOF_BODY_LAWS = 12
         const val SCAN_PARALLEL = 4
         const val SCAN_TIMEOUT_MS = 30_000L
         const val PER_LAW_UNSCOPED = 8

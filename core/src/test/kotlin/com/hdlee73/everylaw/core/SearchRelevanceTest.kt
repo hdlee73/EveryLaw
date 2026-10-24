@@ -177,14 +177,16 @@ class KeywordCrowdedTest {
 private class HistoricalRepo : LawRepository by FakeRepo() {
     private val oldName = "증권거래법"
     private val old = LawVersion("old1", oldName, "19980101", null, "일부개정", "연혁")
+    private val audit = LawVersion("aud1", "주식회사의외부감사에관한법률", "19980101", null, "일부개정", "연혁")
     private val cma = LawVersion("cma1", CMA, "20090204", null, "제정", "현행")
     override suspend fun searchLaws(query: String, bodySearch: Boolean) = FakeRepo().let {
         if (bodySearch) listOf(it.law) else emptyList()
     }
     override suspend fun searchLawVersionsAsOf(name: String, ymd: String): List<LawVersion> =
-        listOf(old, cma).filter { it.name.replace(" ", "").contains(name.replace(" ", "")) && it.effectiveDate <= ymd }
+        listOf(old, audit, cma).filter { it.name.replace(" ", "").contains(name.replace(" ", "")) && it.effectiveDate <= ymd }
     override suspend fun getLawArticlesAt(version: LawVersion, article: ArticleNo?) =
-        if (version.mst == "old1") listOf(Article(ArticleNo("8"), "(유가증권신고서)", "제8조(유가증권신고서) 증권신고서를 제출하여야 한다."))
+        if (version.mst == "aud1") listOf(Article(ArticleNo("2"), "(외부감사의 대상)", "제2조(외부감사의 대상) 외부감사를 받아야 한다."))
+        else if (version.mst == "old1") listOf(Article(ArticleNo("8"), "(유가증권신고서)", "제8조(유가증권신고서) 증권신고서를 제출하여야 한다."))
         else FakeRepo().articles
 }
 
@@ -195,6 +197,12 @@ class KeywordAsOfTest {
         assertTrue(r.articleHits.all { it.law.name == "증권거래법" })
         assertTrue(r.laws.isEmpty() && r.adminRules.isEmpty())
         assertTrue(r.scanNote.contains("1999.10.06"))
+    }
+
+    @Test fun asOfFindsOldLawByKeywordInItsRenamedTitle() = runTest {
+        val r = SearchKeywordUseCase(HistoricalRepo())("외부감사", "19991007")
+        assertTrue(r.articleHits.any { it.law.name == "주식회사의외부감사에관한법률" })
+        assertTrue(r.scanNote.contains("주식회사의외부감사에관한법률"))
     }
 
     @Test fun lawNamePlusKeywordAsOfUsesThatDatesVersion() = runTest {

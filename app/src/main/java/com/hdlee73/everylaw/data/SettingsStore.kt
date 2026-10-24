@@ -33,6 +33,8 @@ data class AppSettings(
     val favorites: List<String> = emptyList(),
     /** 첫 실행 OC 안내를 봤는지 */
     val ocGuideSeen: Boolean = false,
+    /** 조문별로 사용자가 숨긴 하위 규정. 키는 "법령명|제N조", 값은 숨긴 노드의 안정 키(LawNode.stableKey) */
+    val hidden: Map<String, Set<String>> = emptyMap(),
     /** DataStore에서 실제로 읽어 왔는지 (초기 기본값과 구분해 안내가 깜빡이지 않게) */
     val loaded: Boolean = false,
 )
@@ -48,6 +50,7 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
         val recent = stringPreferencesKey("recent")
         val favorites = stringPreferencesKey("favorites")
         val ocGuideSeen = booleanPreferencesKey("oc_guide_seen")
+        val hidden = stringPreferencesKey("hidden_nodes")
     }
 
     val settings: StateFlow<AppSettings> = context.dataStore.data.map { p ->
@@ -59,6 +62,9 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
             recent = p[Keys.recent].toList(),
             favorites = p[Keys.favorites].toList(),
             ocGuideSeen = p[Keys.ocGuideSeen] ?: false,
+            hidden = p[Keys.hidden].toList().mapNotNull { e ->
+                e.split(PAIR, limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] }
+            }.groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() },
             loaded = true,
         )
     }.stateIn(scope, SharingStarted.Eagerly, AppSettings())
@@ -80,10 +86,22 @@ class SettingsStore(private val context: Context, scope: CoroutineScope) {
         p[Keys.favorites] = (if (query in list) list - query else listOf(query) + list).join()
     }
 
+    /** 조문 [articleKey]의 노드 [nodeKey]를 숨기거나(true) 되살린다(false). 전체 200건까지만 보관한다. */
+    suspend fun setHidden(articleKey: String, nodeKey: String, hide: Boolean) = context.dataStore.edit { p ->
+        val entry = articleKey + PAIR + nodeKey
+        val list = p[Keys.hidden].toList().filter { it != entry }
+        p[Keys.hidden] = (if (hide) list + entry else list).takeLast(200).join()
+    }
+
+    suspend fun clearHidden(articleKey: String) = context.dataStore.edit { p ->
+        p[Keys.hidden] = p[Keys.hidden].toList().filter { !it.startsWith(articleKey + PAIR) }.join()
+    }
+
     private fun String?.toList(): List<String> = this?.split(SEP)?.filter { it.isNotBlank() }.orEmpty()
     private fun List<String>.join(): String = joinToString(SEP)
 
     private companion object {
         const val SEP = "\u001F"
+        const val PAIR = "\u001E"
     }
 }

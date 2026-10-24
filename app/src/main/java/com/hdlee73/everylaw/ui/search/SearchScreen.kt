@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -74,6 +75,17 @@ import com.hdlee73.everylaw.core.model.KeywordSearchResult
 import com.hdlee73.everylaw.core.model.LawSummary
 import com.hdlee73.everylaw.core.model.PrecedentSummary
 import com.hdlee73.everylaw.core.model.formatYmd
+import com.hdlee73.everylaw.core.domain.ItemAttachment
+import com.hdlee73.everylaw.core.domain.TreeFilter
+import com.hdlee73.everylaw.core.domain.hiddenCount
+import com.hdlee73.everylaw.core.domain.withoutHidden
+import com.hdlee73.everylaw.ui.LocalTreeViewOptions
+import com.hdlee73.everylaw.ui.TreeViewOptions
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.CompositionLocalProvider
 import com.hdlee73.everylaw.ui.tree.LawTreeView
 import com.hdlee73.everylaw.ui.tree.PdfExporter
 import com.hdlee73.everylaw.ui.tree.PdfOptions
@@ -99,6 +111,9 @@ fun SearchScreen(
     val recent by vm.recent.collectAsStateWithLifecycle()
     val favorites by vm.favorites.collectAsStateWithLifecycle()
     val versions by vm.versions.collectAsStateWithLifecycle()
+    val filter by vm.filter.collectAsStateWithLifecycle()
+    val selectMode by vm.selectMode.collectAsStateWithLifecycle()
+    val hidden by vm.hidden.collectAsStateWithLifecycle()
 
     val searchBar: @Composable ColumnScope.() -> Unit = {
         LawSearchBar(
@@ -113,35 +128,65 @@ fun SearchScreen(
 
     Box(Modifier.fillMaxSize()) {
         when (val s = state) {
-            is SearchUiState.TreeSuccess -> LawTreeView(
-                state = s,
-                isWide = isWide,
-                header = {
-                    searchBar()
-                    TreeHeader(
-                        tree = s.tree,
-                        isFavorite = s.tree.query.raw in favorites,
+            is SearchUiState.TreeSuccess -> {
+                // 숨김은 보기 화면·PDF 모두에서 빼고(체크하는 중에는 흐리게 보여 줌), 찾기는 맞는 줄과 그 상위만 남긴다.
+                val fullRoot = s.tree.root
+                val viewRoot = remember(fullRoot, hidden, selectMode, filter) {
+                    TreeFilter.filter(if (selectMode) fullRoot else fullRoot.withoutHidden(hidden), filter)
+                }
+                val hiddenCount = remember(fullRoot, hidden) { fullRoot.hiddenCount(hidden) }
+                val matchCount = remember(viewRoot, filter) { TreeFilter.matchCount(viewRoot, filter) }
+                val shown = if (filter.isBlank() && viewRoot === fullRoot) s else {
+                    // 찾는 중에는 맞는 줄이 접혀 있지 않게 모두 펼친다
+                    val expanded = if (filter.isBlank()) s.expanded else {
+                        viewRoot.flatten().map { it.id }.toSet() +
+                            ItemAttachment.attach(viewRoot.article, viewRoot.children).keys.map { "grp:" + it.key }
+                    }
+                    s.copy(tree = s.tree.copy(root = viewRoot), expanded = expanded)
+                }
+                val options = remember(filter, selectMode, hidden) {
+                    TreeViewOptions(filter.trim(), selectMode, hidden, onHide = vm::setHidden)
+                }
+                CompositionLocalProvider(LocalTreeViewOptions provides options) {
+                    LawTreeView(
+                        state = shown,
                         isWide = isWide,
-                        onToggleFavorite = { vm.toggleFavorite(s.tree.query.raw) },
-                        onVersions = vm::openVersions,
-                        onOpenSettings = onOpenSettings,
+                        header = {
+                            searchBar()
+                            TreeHeader(
+                                tree = s.tree,
+                                isFavorite = s.tree.query.raw in favorites,
+                                isWide = isWide,
+                                onToggleFavorite = { vm.toggleFavorite(s.tree.query.raw) },
+                                onVersions = vm::openVersions,
+                                onOpenSettings = onOpenSettings,
+                            )
+                        },
+                        actions = {
+                            TreeActions(
+                                // PDF·공유에는 숨긴 항목을 뺀 트리를 쓴다
+                                tree = s.tree.copy(root = fullRoot.withoutHidden(hidden)),
+                                isWide = isWide,
+                                splitMode = splitMode,
+                                onSplitMode = onSplitMode,
+                                onExpandAll = vm::expandAll,
+                                onVersions = vm::openVersions,
+                                buildExtras = vm::pdfExtras,
+                                filter = filter,
+                                onFilter = vm::setFilter,
+                                matchCount = matchCount,
+                                selectMode = selectMode,
+                                onSelectMode = vm::setSelectMode,
+                                hiddenCount = hiddenCount,
+                                onRestoreHidden = vm::restoreAllHidden,
+                            )
+                        },
+                        onToggle = vm::toggle,
+                        onSelect = vm::select,
+                        onOpenPrecedent = onOpenPrecedent,
                     )
-                },
-                actions = {
-                    TreeActions(
-                        tree = s.tree,
-                        isWide = isWide,
-                        splitMode = splitMode,
-                        onSplitMode = onSplitMode,
-                        onExpandAll = vm::expandAll,
-                        onVersions = vm::openVersions,
-                        buildExtras = vm::pdfExtras,
-                    )
-                },
-                onToggle = vm::toggle,
-                onSelect = vm::select,
-                onOpenPrecedent = onOpenPrecedent,
-            )
+                }
+            }
 
             else -> LazyColumn(
                 Modifier.fillMaxSize().let { if (isWide) it.padding(horizontal = 24.dp) else it },
@@ -266,6 +311,13 @@ private fun TreeActions(
     onExpandAll: (Boolean) -> Unit,
     onVersions: () -> Unit,
     buildExtras: suspend (PdfOptions) -> com.hdlee73.everylaw.core.model.PdfExtras,
+    filter: String,
+    onFilter: (String) -> Unit,
+    matchCount: Int,
+    selectMode: Boolean,
+    onSelectMode: (Boolean) -> Unit,
+    hiddenCount: Int,
+    onRestoreHidden: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -300,8 +352,9 @@ private fun TreeActions(
     }
 
     // 옆으로 밀지 않고도 모두 보이도록 줄바꿈한다. 글자는 짧게.
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
     FlowRow(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 2.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
@@ -327,6 +380,43 @@ private fun TreeActions(
             label = { Text("화면: ${splitMode.label}") },
             leadingIcon = { Icon(Icons.Outlined.ViewColumn, null) },
         )
+        AssistChip(
+            onClick = { onSelectMode(!selectMode) },
+            label = { Text(if (selectMode) "숨기기 끝" else "항목 숨기기") },
+            leadingIcon = { Icon(if (selectMode) Icons.Outlined.Check else Icons.Outlined.VisibilityOff, null) },
+        )
+    }
+    OutlinedTextField(
+        value = filter,
+        onValueChange = onFilter,
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyMedium,
+        placeholder = { Text("결과 안에서 찾기 (키워드·제12조)") },
+        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+        trailingIcon = {
+            if (filter.isNotEmpty()) IconButton(onClick = { onFilter("") }) { Icon(Icons.Filled.Close, "찾기 지우기") }
+        },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp),
+    )
+    val status = buildList {
+        if (filter.isNotBlank()) add(if (matchCount > 0) "맞는 하위 규정 ${matchCount}개" else "맞는 하위 규정이 없어요")
+        if (selectMode) add("숨길 항목을 체크하세요")
+        else if (hiddenCount > 0) add("숨긴 항목 ${hiddenCount}개 · PDF에서도 빠져요")
+    }
+    if (status.isNotEmpty() || hiddenCount > 0) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                status.joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (hiddenCount > 0) {
+                if (!selectMode) TextButton(onClick = { onSelectMode(true) }) { Text("숨긴 항목 보기") }
+                TextButton(onClick = onRestoreHidden) { Text("모두 되돌리기") }
+            }
+        }
+    }
     }
 }
 

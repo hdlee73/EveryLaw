@@ -7,6 +7,7 @@ import com.hdlee73.everylaw.core.domain.GetDelegationTreeUseCase
 import com.hdlee73.everylaw.core.domain.GetLawVersionsUseCase
 import com.hdlee73.everylaw.core.domain.LawDomainException
 import com.hdlee73.everylaw.core.domain.SearchKeywordUseCase
+import com.hdlee73.everylaw.core.domain.withoutHidden
 import com.hdlee73.everylaw.core.model.DelegationTree
 import com.hdlee73.everylaw.core.model.KeywordSearchResult
 import com.hdlee73.everylaw.core.model.LawLevel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -70,6 +72,19 @@ class SearchViewModel(
 
     private val _state = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
+
+    /** 결과 안에서 찾는 글 (키워드 또는 "제12조") */
+    private val _filter = MutableStateFlow("")
+    val filter: StateFlow<String> = _filter.asStateFlow()
+
+    /** 숨길 항목을 체크하는 중인지 (켜져 있는 동안은 숨긴 항목도 흐리게 보인다) */
+    private val _selectMode = MutableStateFlow(false)
+    val selectMode: StateFlow<Boolean> = _selectMode.asStateFlow()
+
+    /** 지금 보는 조문에서 사용자가 숨긴 하위 규정의 키 */
+    val hidden: StateFlow<Set<String>> = combine(_state, settings.settings) { s, app ->
+        (s as? SearchUiState.TreeSuccess)?.let { app.hidden[articleKey(it.tree)] }.orEmpty()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     private val _versions = MutableStateFlow<VersionSheetState>(VersionSheetState.Hidden)
     val versions: StateFlow<VersionSheetState> = _versions.asStateFlow()
@@ -125,6 +140,7 @@ class SearchViewModel(
                         is DelegationProgress.Done -> {
                             if (pushHistory) push(before)
                             settings.addRecent(q)
+                            resetViewTools()
                             _state.value = SearchUiState.TreeSuccess(
                                 tree = p.tree,
                                 expanded = defaultExpanded(p.tree),
@@ -166,6 +182,32 @@ class SearchViewModel(
         s.copy(expanded = if (expand) (s.tree.root.flatten().map { it.id } + groups).toSet() else setOf(s.tree.root.id))
     }
 
+    fun setFilter(text: String) {
+        _filter.value = text
+    }
+
+    fun setSelectMode(on: Boolean) {
+        _selectMode.value = on
+    }
+
+    fun setHidden(nodeKey: String, hide: Boolean) {
+        val tree = (_state.value as? SearchUiState.TreeSuccess)?.tree ?: return
+        viewModelScope.launch { settings.setHidden(articleKey(tree), nodeKey, hide) }
+    }
+
+    fun restoreAllHidden() {
+        val tree = (_state.value as? SearchUiState.TreeSuccess)?.tree ?: return
+        _selectMode.value = false
+        viewModelScope.launch { settings.clearHidden(articleKey(tree)) }
+    }
+
+    private fun resetViewTools() {
+        _filter.value = ""
+        _selectMode.value = false
+    }
+
+    private fun articleKey(tree: DelegationTree) = tree.law.name + "|" + tree.query.article.display
+
     fun select(nodeId: String) = updateTree { it.copy(selectedId = nodeId) }
 
     private fun updateTree(block: (SearchUiState.TreeSuccess) -> SearchUiState.TreeSuccess) {
@@ -194,7 +236,9 @@ class SearchViewModel(
     /** PDF 범위에 맞춰 판례 본문·인용 조문을 내려받는다. */
     suspend fun pdfExtras(options: com.hdlee73.everylaw.ui.tree.PdfOptions): com.hdlee73.everylaw.core.model.PdfExtras {
         val tree = (_state.value as? SearchUiState.TreeSuccess)?.tree ?: return com.hdlee73.everylaw.core.model.PdfExtras()
-        return buildPdfExtras(tree, options.precedentBodies, options.relatedArticles)
+        // 숨긴 하위 규정은 PDF에서도 뺀다
+        val shown = tree.copy(root = tree.root.withoutHidden(hidden.value))
+        return buildPdfExtras(shown, options.precedentBodies, options.relatedArticles)
     }
 
     fun closeVersions() {
@@ -233,6 +277,7 @@ class SearchViewModel(
             }
             _state.value = prev
         }
+        resetViewTools()
         _query.value = when (val s = _state.value) {
             is SearchUiState.TreeSuccess -> s.tree.query.raw
             is SearchUiState.KeywordSuccess -> s.result.keyword

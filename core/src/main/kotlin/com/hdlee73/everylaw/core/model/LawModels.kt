@@ -277,6 +277,8 @@ data class KeywordSearchResult(
     val articleHits: List<ArticleHit> = emptyList(),
     /** "법령명 + 키워드"로 범위를 좁힌 경우 그 법령 */
     val scopeLaw: LawSummary? = null,
+    /** 범위를 정하지 않은 검색에서 조문을 어느 법령에서 찾았는지 안내 */
+    val scanNote: String = "",
 )
 
 /**

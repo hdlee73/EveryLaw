@@ -514,8 +514,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.keywordResults(
     if (result.articleHits.isEmpty()) item {
         Text(
             if (result.scopeLaw != null) "조문 제목·내용에 '${result.keyword}'이(가) 들어 있는 조문이 없어요."
-            else "상위 법령에서 조문 제목·내용에 '${result.keyword}'이(가) 들어 있는 조문을 찾지 못했어요. 법령명을 앞에 붙이면(예: 자본시장법 ${result.keyword}) 그 법 안에서 찾아요.",
+            else "'${result.keyword}'이(가) 들어 있는 조문을 찾지 못했어요. " + result.scanNote.ifBlank { "법령명을 앞에 붙이면(예: 자본시장법 ${result.keyword}) 그 법 안에서 찾아요." },
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+        )
+    }
+    if (result.articleHits.isNotEmpty() && result.scopeLaw == null && result.scanNote.isNotBlank()) item {
+        Text(
+            result.scanNote,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
         )

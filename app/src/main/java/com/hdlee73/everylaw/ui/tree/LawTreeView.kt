@@ -504,9 +504,14 @@ private fun LazyListScope.precedentItems(tree: DelegationTree, onOpen: (Preceden
             Text("${tree.precedents.size}건", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+    if (tree.precedentBasis.isNotBlank()) {
+        item(key = "prec-basis") {
+            Text(tree.precedentBasis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
     if (tree.precedents.isEmpty()) {
         item(key = "prec-empty") {
-            Text("이 조문을 다룬 판례를 찾지 못했어요.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("이 조문을 인용한 판례를 찾지 못했어요.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     items(tree.precedents, key = { "prec-" + it.serialNo + it.caseNumber }) { p -> PrecedentRow(p, onClick = { onOpen(p) }) }
@@ -516,6 +521,10 @@ private fun LazyListScope.precedentItems(tree: DelegationTree, onOpen: (Preceden
 fun PrecedentRow(p: PrecedentSummary, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            p.matchNote?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(2.dp))
+            }
             Text(p.caseName, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(4.dp))
             Text(

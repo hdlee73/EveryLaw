@@ -64,6 +64,21 @@ private fun splitChild(c: LawNode, lawNo: ArticleNo): List<LawNode> {
     }
 }
 
+/**
+ * 항·호·목을 지정한 조회에서 그 위치에 딸린 하위 규정을 고른다. [children]은 [withParagraphPieces]로 항별로 쪼갠 것이어야
+ * 시행령 제87조제2항처럼 한 조의 항마다 위임 위치가 다른 경우를 가려낼 수 있다.
+ * 1) 그 위치(또는 그 아래)를 인용한 것, 없으면 2) 상위 위치·조 전체를 인용한 것, 없으면 3) 조 전체 하위 규정을 돌려주고
+ * 두 번째 값에 안내 문구를 담는다. 1)이면 null.
+ */
+fun selectForPath(children: List<LawNode>, path: ItemPath): Pair<List<LawNode>, String?> {
+    val direct = children.filter { c -> c.anchor?.startsWith(path) == true }
+    if (direct.isNotEmpty()) return direct to null
+    val broader = children.filter { c -> c.anchor?.let { a -> a.isEmpty || path.startsWith(a) } == true }
+    if (broader.isNotEmpty()) return broader to "${path.display}을(를) 직접 인용한 하위 규정은 없어, 그 조(또는 상위 항·호) 전체를 위임 근거로 삼은 규정을 보여 드려요."
+    if (children.isEmpty()) return children to "${path.display}에 연결된 하위 규정을 찾지 못했어요."
+    return children to "${path.display}을(를) 직접 인용한 하위 규정을 찾지 못해, 이 조 전체의 하위 규정을 보여 드려요. 본문에 '대통령령으로 정하는' 등 위임 문구가 있어도 시행령이 그 위치를 인용하지 않으면 연결되지 않습니다."
+}
+
 /** 비교표 한 줄: 법률 조문의 한 부분과, 그 부분을 위임 근거로 삼은 단계별 규정들. */
 data class CompareRow(val lawText: String, val cells: Map<LawLevel, List<LawNode>>)
 

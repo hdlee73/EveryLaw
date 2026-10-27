@@ -6,6 +6,12 @@ object Changelog {
 
     val entries = listOf(
         Entry(
+            "1.8.2", "2026-10-28",
+            listOf(
+                "법령 서버가 XML이 아닌 응답을 보냈을 때 \"mismatched tag\" 같은 오류 대신 원인을 알려 주는 안내 표시",
+            ),
+        ),
+        Entry(
             "1.8.1", "2026-10-27",
             listOf(
                 "한글(HWPX) 저장을 PDF와 같게: 저장 창에서 용지 선택, 판례 본문·인용 조문 포함, 색 제목·쪽 번호 등 서식 통일",

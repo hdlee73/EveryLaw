@@ -16,6 +16,7 @@ import com.hdlee73.everylaw.core.model.PrecedentSummary
 import com.hdlee73.everylaw.core.model.ThreeTierComparison
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import com.hdlee73.everylaw.core.parser.XmlNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -214,5 +215,15 @@ class KeywordAsOfTest {
     @Test fun lawNotYetInForceIsNotFoundAsOf() = runTest {
         val r = SearchKeywordUseCase(HistoricalRepo())("자본시장법 손실보전", "19991006")
         assertEquals(null, r.scopeLaw)
+    }
+}
+
+class XmlTreeNonXmlTest {
+    @org.junit.Test
+    fun htmlResponseGivesReadableError() {
+        val e = runCatching {
+            XmlNode.parse("<!DOCTYPE html><html><head><meta charset=utf-8><title>접근 제한</title></head></html>")
+        }.exceptionOrNull()
+        org.junit.Assert.assertTrue(e?.message.orEmpty().contains("XML이 아닌 응답"))
     }
 }

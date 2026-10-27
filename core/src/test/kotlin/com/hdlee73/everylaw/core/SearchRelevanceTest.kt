@@ -216,6 +216,7 @@ class KeywordAsOfTest {
         assertEquals(null, r.scopeLaw)
     }
 }
+
 class XmlTreeNonXmlTest {
     @org.junit.Test
     fun htmlResponseGivesReadableError() {
@@ -224,4 +225,5 @@ class XmlTreeNonXmlTest {
         }.exceptionOrNull()
         org.junit.Assert.assertTrue(e?.message.orEmpty().contains("XML이 아닌 응답"))
     }
+}
 }

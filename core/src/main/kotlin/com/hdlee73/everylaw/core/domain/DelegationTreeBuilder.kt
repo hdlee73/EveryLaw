@@ -44,6 +44,7 @@ class DelegationTreeBuilder(
 
         ruleNodes.forEach { rule ->
             val parent = decreeNodes.firstOrNull { d -> d.article.number?.let { refersTo(rule.article.content, DECREE_PREFIX, it) } == true }
+                ?: root.takeIf { lawNo != null && refersTo(rule.article.content, LAW_PREFIX, lawNo) } // 법 조문을 직접 인용한 시행규칙은 시행령 밑이 아니라 법 조문 아래에 둔다
                 ?: decreeNodes.firstOrNull()
                 ?: root
             parent.children += rule

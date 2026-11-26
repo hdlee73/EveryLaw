@@ -274,6 +274,14 @@ data class ArticleHit(
     val snippet: String,
 )
 
+/** 법령명(약칭 포함) 검색 때 맨 위에 보여 주는 묶음: 그 법과 시행령·시행규칙·감독규정·시행세칙. */
+data class LawFamily(
+    /** 일치한 법령의 정식 명칭. 부분 일치뿐이면 null */
+    val base: String?,
+    val laws: List<LawSummary>,
+    val adminRules: List<AdminRuleSummary>,
+)
+
 /** 키워드 통합 검색 결과. */
 data class KeywordSearchResult(
     val keyword: String,
@@ -289,6 +297,8 @@ data class KeywordSearchResult(
     val scopeLaw: LawSummary? = null,
     /** 범위를 정하지 않은 검색에서 조문을 어느 법령에서 찾았는지 안내 */
     val scanNote: String = "",
+    /** 법령명·약칭으로 검색했을 때 법 + 하위 법령 묶음 */
+    val family: LawFamily? = null,
 )
 
 /**

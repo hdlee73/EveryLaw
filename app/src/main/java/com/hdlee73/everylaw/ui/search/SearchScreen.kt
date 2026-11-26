@@ -559,6 +559,34 @@ private fun androidx.compose.foundation.lazy.LazyListScope.keywordResults(
             )
         }
     }
+    val family = result.family
+    val famMsts = family?.laws?.map { it.mst }?.toSet().orEmpty()
+    val famAdm = family?.adminRules?.map { it.serialNo }?.toSet().orEmpty()
+    if (family != null && (family.laws.isNotEmpty() || family.adminRules.isNotEmpty())) {
+        item {
+            SectionTitle(
+                if (family.base != null) "'${family.base}'과 하위 법령" else "'${result.keyword}' 관련 법령",
+                family.laws.size + family.adminRules.size,
+                Icons.AutoMirrored.Outlined.MenuBook,
+            )
+        }
+        items(family.laws, key = { "fam-law-${it.mst}-${it.name}" }) { law ->
+            ResultCard(
+                title = law.name,
+                subtitle = listOfNotNull(law.kind, law.abbreviation, law.effectiveDate?.let { "시행 ${formatYmd(it)}" }).joinToString(" · "),
+                onClick = { onLaw(law) },
+            )
+        }
+        items(family.adminRules, key = { "fam-adm-${it.serialNo}-${it.name}" }) { r ->
+            ResultCard(
+                title = r.name,
+                subtitle = listOfNotNull(r.kind ?: "행정규칙", r.agency).joinToString(" · "),
+                onClick = { onAdminRule(r) },
+            )
+        }
+    }
+    val otherLaws = result.laws.filter { it.mst !in famMsts }
+    val otherAdm = result.adminRules.filter { it.serialNo !in famAdm }
     item { SectionTitle("조문 (제목·내용)", result.articleHits.size, Icons.AutoMirrored.Outlined.MenuBook) }
     if (result.articleHits.isEmpty()) item {
         Text(
@@ -599,16 +627,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.keywordResults(
             }
         }
     }
-    if (result.scopeLaw == null) item { SectionTitle("법령", result.laws.size, Icons.AutoMirrored.Outlined.MenuBook) }
-    if (result.scopeLaw == null) items(result.laws, key = { "law-${it.mst}-${it.name}" }) { law ->
+    if (result.scopeLaw == null) item { SectionTitle(if (famMsts.isNotEmpty()) "본문에서 언급한 법령" else "법령", otherLaws.size, Icons.AutoMirrored.Outlined.MenuBook) }
+    if (result.scopeLaw == null) items(otherLaws, key = { "law-${it.mst}-${it.name}" }) { law ->
         ResultCard(
             title = law.name,
             subtitle = listOfNotNull(law.kind, law.abbreviation, law.effectiveDate?.let { "시행 ${formatYmd(it)}" }).joinToString(" · "),
             onClick = { onLaw(law) },
         )
     }
-    if (result.adminRules.isNotEmpty()) item { SectionTitle("행정규칙 (감독규정·세칙 등)", result.adminRules.size, Icons.Outlined.Description) }
-    if (result.adminRules.isNotEmpty()) items(result.adminRules, key = { "adm-${it.serialNo}-${it.name}" }) { r ->
+    if (otherAdm.isNotEmpty()) item { SectionTitle("행정규칙 (감독규정·세칙 등)", otherAdm.size, Icons.Outlined.Description) }
+    if (otherAdm.isNotEmpty()) items(otherAdm, key = { "adm-${it.serialNo}-${it.name}" }) { r ->
         ResultCard(
             title = r.name,
             subtitle = listOfNotNull(r.kind, r.agency).joinToString(" · "),

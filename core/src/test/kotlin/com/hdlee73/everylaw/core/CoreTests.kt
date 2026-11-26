@@ -252,6 +252,15 @@ class ItemQueryTest {
 
 class AnchorTest {
     private val no = ArticleNo("420")
+    @Test fun anchorsAfterLawAbbreviationDefinition() {
+        val no = ArticleNo("2")
+        val text = "「주식회사 등의 외부감사에 관한 법률」(이하 \"법\"이라 한다) 제2조제2호다목에서 \"대통령령으로 정하는 서류\"란 다음 각 호의 서류를 말한다."
+        assertTrue(DelegationTreeBuilder.refersTo(text, DelegationTreeBuilder.LAW_PREFIX, no))
+        val a = DelegationTreeBuilder.anchorOf(text, DelegationTreeBuilder.LAW_PREFIX, no)
+        assertEquals(com.hdlee73.everylaw.core.model.ItemPath(null, "2", "다"), a)
+        assertFalse(DelegationTreeBuilder.refersTo("신법 제2조", DelegationTreeBuilder.LAW_PREFIX, no))
+    }
+
     @Test fun anchorsToCitedItem() {
         val a = DelegationTreeBuilder.anchorOf("법 제420조제1항제5호에 따라", DelegationTreeBuilder.LAW_PREFIX, no)
         assertEquals(com.hdlee73.everylaw.core.model.ItemPath(1, "5", null), a)

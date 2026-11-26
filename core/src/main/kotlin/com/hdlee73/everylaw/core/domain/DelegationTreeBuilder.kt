@@ -115,7 +115,8 @@ class DelegationTreeBuilder(
 
     companion object {
         // 앞에 한글이 붙지 않은 "법"/"영"/"규칙"/"규정" 이어야 다른 법(예: 은행법)과 혼동하지 않는다.
-        const val LAW_PREFIX = """(?<![가-힣])법"""
+        // "법"으로 줄여 부르는 정의 직후(`(이하 "법"이라 한다) 제2조제2호다목`)의 인용도 법 조문 인용으로 본다.
+        const val LAW_PREFIX = """(?:(?<![가-힣])법|["“]법["”]이?라고?\s*(?:한다|함)\s*\)?)"""
         const val DECREE_PREFIX = """(?:(?<![가-힣])영|시행령)"""
         const val RULE_PREFIX = """(?:(?<![가-힣])규칙|시행규칙)"""
         private val LEAD_FOLLOWS = Regex("""^\s*(?:각\s*호\s*외의\s*부분|본문|단서)""")
